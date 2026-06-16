@@ -136,6 +136,9 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 <script>
 var PROXY = 'https://uw-proxy-837b.onrender.com/proxy';
 var activeTicker = 'SPY';
+  document.getElementById('manualPMH').value = pmhValues[t] || '';
+document.getElementById('manualPML').value = pmlValues[t] || '';
+
 var pmhValues = { SPY: '', QQQ: '', IWM: '' };
 var pmlValues = { SPY: '', QQQ: '', IWM: '' };
 
@@ -166,6 +169,9 @@ function selectTicker(t) {
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
   document.getElementById('tab-'+t).classList.add('active');
   document.getElementById('customTicker').value = '';document.getElementById('manualPMH').value = pmhValues[t] || '';
+  document.getElementById('manualPMH').value = pmhValues[t] || '';
+document.getElementById('manualPML').value = pmlValues[t] || '';
+
 document.getElementById('manualPML').value = pmlValues[t] || '';
 
 }
