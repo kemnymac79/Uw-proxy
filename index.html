@@ -156,7 +156,7 @@ async function runAnalysis() {
 
     const infoRaw = infoRes.status==='fulfilled' ? infoRes.value : null;
 const info = infoRaw?.data || {};
-const price = parseFloat(flowData[0]?.underlying_price || flowData[1]?.underlying_price || 0);
+
 const vwap = parseFloat(info.vwap || 0);
 const pmh = parseFloat(info.premarket_high || info.pm_high || 0);
 const pml = parseFloat(info.premarket_low || info.pm_low || 0);
@@ -167,6 +167,8 @@ const pml = parseFloat(info.premarket_low || info.pm_low || 0);
     const ema8 = calcEMA(closes, 8);
 
     const flowData = flowRes.status==='fulfilled'?(flowRes.value?.data||[]):[];
+   const price = parseFloat(flowData[0]?.underlying_price || flowData[1]?.underlying_price || 0);
+
     const callPrem = flowData.filter(f=>(f.put_call||'').toLowerCase()==='call').reduce((s,f)=>s+parseFloat(f.total_premium||f.premium||0),0);
     const putPrem = flowData.filter(f=>(f.put_call||'').toLowerCase()==='put').reduce((s,f)=>s+parseFloat(f.total_premium||f.premium||0),0);
     const flowSentiment = callPrem>putPrem?'Bullish':putPrem>callPrem?'Bearish':'Neutral';
