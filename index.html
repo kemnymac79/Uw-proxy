@@ -158,7 +158,8 @@ function runAnalysis() {
       uw('/api/market/market-tide'),
       uw('/api/stock/' + sym + '/spot-exposures/strike'),
       uw('/api/news/headlines?limit=5'),
-      uw('/api/stock/' + sym + '/ohlc/10')
+     uw('/api/stock/' + sym + '/ohlc/1m')
+
     ]);
   })
   .then(function(results) {
@@ -168,12 +169,28 @@ function runAnalysis() {
     var newsRes = results[3];
     var ohlcRes = results[4];
 
-    var candles = ohlcRes.data || ohlcRes.candles || ohlcRes.results || [];
-    candles.sort(function(a,b){ return new Date(a.date||a.time||a.t) - new Date(b.date||b.time||b.t); });
-    closes = candles.map(function(c){ return parseFloat(c.close||c.c||0); }).filter(function(v){ return v>0; });
-    ema8 = calcEMA(closes, 8);
+    var candles = ohlcRes.data || [];
+candles.sort(function(a,b){ return new Date(a.start_time) - new Date(b.start_time); });
+var preCandles = candles.filter(function(c){ return c.market_time === 'pre'; });
+var regCandles = candles.filter(function(c){ return c.market_time === 'r'; });
+var pmh = preCandles.length > 0 ? Math.max.apply(null, preCandles.map(function(c){ return parseFloat(c.high); })) : 0;
+var pml = preCandles.length > 0 ? Math.min.apply(null, preCandles.map(function(c){ return parseFloat(c.low); })) : 0;
+var closes = regCandles.map(function(c){ return parseFloat(c.close); });
+var ema8 = calcEMA(closes, 8);
+var vwap = 0;
+if (regCandles.length > 0) {
+  var totalTPV = 0; var totalVol = 0;
+  regCandles.forEach(function(c) {
+    var tp = (parseFloat(c.high)+parseFloat(c.low)+parseFloat(c.close))/3;
+    var vol = parseFloat(c.volume||0);
+    totalTPV += tp * vol;
+    totalVol += vol;
+  });
+  vwap = totalVol > 0 ? totalTPV / totalVol : 0;
+}
 
-    var pmh = 0; var pml = 0; var vwap = 0;
+
+    
 
     var callPrem = 0; var putPrem = 0;
     flowData.forEach(function(f) {
