@@ -158,7 +158,8 @@ function runAnalysis() {
       uw('/api/market/market-tide'),
       uw('/api/stock/' + sym + '/spot-exposures/strike'),
       uw('/api/news/headlines?limit=5'),
-     uw('/api/stock/' + sym + '/ohlc/1m')
+     uw('/api/stock/' + sym + '/ohlc/1m?market_time=pre,r')
+
 
     ]);
   })
