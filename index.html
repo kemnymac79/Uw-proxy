@@ -269,17 +269,20 @@ uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50')
     var ema8=calcEMA(closes,8);
 
     var vwap=0;
-    if(regCandles.length>0){
-      var totalTPV=0,totalVol=0;
-      regCandles.forEach(function(c) {
-  var h=parseFloat(c.high), l=parseFloat(c.low), cl=parseFloat(c.close), vol=parseFloat(c.volume||0);
-  if(isNaN(h)||isNaN(l)||isNaN(cl)||vol<=0) return;
-  var tp=(h+l+cl)/3;
-  totalTPV+=tp*vol; totalVol+=vol;
-});
-
-      vwap=totalVol>0?totalTPV/totalVol:0;
+if(regCandles.length>0){
+  var totalTPV=0,totalVol=0,validCount=0;
+  regCandles.forEach(function(c) {
+    var h=parseFloat(c.high), l=parseFloat(c.low), cl=parseFloat(c.close), vol=parseFloat(c.volume||0);
+    if(isNaN(h)||isNaN(l)||isNaN(cl)) return;
+    var tp=(h+l+cl)/3;
+    if(vol>0 && vol<1e9){
+      totalTPV+=tp*vol; totalVol+=vol;
     }
+    validCount++;
+  });
+  vwap = totalVol>0 ? totalTPV/totalVol : (validCount>0 ? price : 0);
+}
+
 
     var callPrem=0,putPrem=0;
     flowData.forEach(function(f){
