@@ -128,6 +128,18 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 var PROXY = 'https://uw-proxy-837b.onrender.com/proxy';
 var activeTicker = 'SPY';
 var autoRefreshInterval = null;
+var lastVerdict = '';
+var PUSHOVER_TOKEN = 'a6xvwbphhv423o7zys4utpe3ufir59';
+var PUSHOVER_USER = 'uiizv95oa8xzzec3eyyns3psz67fb1';
+
+function sendPushover(title, message) {
+  fetch('https://api.pushover.net/1/messages.json', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'token='+PUSHOVER_TOKEN+'&user='+PUSHOVER_USER+'&title='+encodeURIComponent(title)+'&message='+encodeURIComponent(message)+'&priority=1'
+  });
+}
+
 
 function selectTicker(t) {
   activeTicker = t;
@@ -370,7 +382,14 @@ function runAnalysis() {
     }
 
     document.getElementById('updatedTime').textContent='Updated: '+new Date().toLocaleTimeString();
-    startAutoRefresh();
+    if(verdict !== lastVerdict && lastVerdict !== '') {
+  if(verdict === 'CALLS') sendPushover('🟢 CALLS — '+sym, 'Above PMH+EMA+VWAP. Price: $'+price.toFixed(2));
+  if(verdict === 'PUTS') sendPushover('🔴 PUTS — '+sym, 'Below PML+EMA+VWAP. Price: $'+price.toFixed(2));
+  if(milestone) sendPushover('⚠️ EXIT ALERT — '+sym, milestone.msg+' Price: $'+price.toFixed(2));
+}
+lastVerdict = verdict;
+startAutoRefresh();
+
   })
   .catch(function(err){
     setVerdict('v-error','⚠️ ERROR');
