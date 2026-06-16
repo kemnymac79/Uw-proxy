@@ -32,6 +32,7 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 .v-puts { background: #ff3b5c; color: #fff; box-shadow: 0 0 24px #ff3b5c66; }
 .v-notrade { background: #f5a623; color: #000; }
 .v-error { background: #2a0a0a; color: #ff8888; }
+.v-exit { background: #ff0000; color: #fff; box-shadow: 0 0 24px #ff000099; }
 .reason { color: #777; font-size: 12px; text-align: center; margin-bottom: 12px; }
 .price-display { text-align: center; margin-bottom: 14px; }
 .price-num { font-size: 44px; font-weight: 900; font-family: monospace; }
@@ -53,10 +54,14 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 .exit-box { background: #0a1a0a; border-radius: 12px; padding: 14px; margin-bottom: 12px; border: 1px solid #00ff8833; }
 .exit-title { color: #00ff88; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
 .exit-text { color: #aaa; font-size: 13px; line-height: 1.5; }
+.alert-box { background: #ff000022; border: 2px solid #ff0000; border-radius: 12px; padding: 14px; margin-bottom: 12px; text-align: center; }
+.alert-text { color: #ff4444; font-size: 16px; font-weight: 900; }
 .error-box { background: #1a0808; border: 1px solid #ff3b5c44; border-radius: 10px; padding: 12px; color: #ff8888; font-size: 12px; margin-bottom: 12px; }
 .news-item { color: #999; font-size: 12px; padding: 5px 0; border-bottom: 1px solid #1a1a2e; line-height: 1.4; }
 .gex-box { background: #0d0d1a; border-radius: 8px; padding: 8px 12px; border: 1px solid #1a1a2e; margin-top: 6px; }
 .footer { text-align: center; color: #222; font-size: 10px; margin-top: 12px; }
+.refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+.refresh-status { color: #333; font-size: 10px; }
 </style>
 </head>
 <body>
@@ -86,11 +91,29 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
       <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10">
     </div>
   </div>
-  <div class="updated" id="updatedTime"></div>
+  <div class="pmh-row" style="margin-top:4px;">
+    <div class="pmh-box">
+      <div class="pmh-label">My Entry Price</div>
+      <input class="pmh-input" id="entryPrice" type="number" step="0.01" placeholder="e.g. 1.50">
+    </div>
+    <div class="pmh-box">
+      <div class="pmh-label">Position</div>
+      <select id="positionType" style="width:100%;background:#0d0d1a;border:1px solid #1a1a2e;border-radius:7px;padding:6px 10px;color:#fff;font-size:13px;outline:none;">
+        <option value="">None</option>
+        <option value="CALLS">CALLS</option>
+        <option value="PUTS">PUTS</option>
+      </select>
+    </div>
+  </div>
+  <div class="refresh-bar">
+    <div class="refresh-status" id="refreshStatus">Auto-refresh: OFF</div>
+    <div class="updated" id="updatedTime"></div>
+  </div>
 </div>
 <div class="content">
   <div class="verdict v-ready" id="verdictBox">📊 Hit Analyze</div>
   <div class="reason" id="verdictReason"></div>
+  <div id="alertBox"></div>
   <div id="priceDisplay"></div>
   <div id="ellisSection"></div>
   <div id="levelsSection"></div>
@@ -104,11 +127,12 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 <script>
 var PROXY = 'https://uw-proxy-837b.onrender.com/proxy';
 var activeTicker = 'SPY';
+var autoRefreshInterval = null;
 
 function selectTicker(t) {
   activeTicker = t;
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
-  document.getElementById('tab-' + t).classList.add('active');
+  document.getElementById('tab-'+t).classList.add('active');
   document.getElementById('customTicker').value = '';
 }
 
@@ -117,157 +141,186 @@ function getTicker() {
 }
 
 function uw(path) {
-  return fetch(PROXY + '?path=' + encodeURIComponent(path)).then(function(r){
-    if (!r.ok) throw new Error(r.status + ': ' + path);
+  return fetch(PROXY+'?path='+encodeURIComponent(path)).then(function(r){
+    if(!r.ok) throw new Error(r.status+': '+path);
     return r.json();
   });
 }
 
 function calcEMA(arr, period) {
-  if (!arr || arr.length < period) return null;
-  var k = 2 / (period + 1);
-  var ema = arr.slice(0, period).reduce(function(a,b){ return a+b; }, 0) / period;
-  for (var i = period; i < arr.length; i++) ema = arr[i] * k + ema * (1 - k);
+  if(!arr||arr.length<period) return null;
+  var k=2/(period+1);
+  var ema=arr.slice(0,period).reduce(function(a,b){return a+b;},0)/period;
+  for(var i=period;i<arr.length;i++) ema=arr[i]*k+ema*(1-k);
   return ema;
 }
 
-function setVerdict(cls, txt) {
-  var box = document.getElementById('verdictBox');
-  box.className = 'verdict ' + cls;
-  box.textContent = txt;
+function setVerdict(cls,txt) {
+  var box=document.getElementById('verdictBox');
+  box.className='verdict '+cls;
+  box.textContent=txt;
 }
 
 function clearAll() {
-  ['verdictReason','priceDisplay','ellisSection','levelsSection','confirmSection','flowSection','exitSection','newsSection','errorBox']
-    .forEach(function(id){ document.getElementById(id).innerHTML = ''; });
+  ['verdictReason','alertBox','priceDisplay','ellisSection','levelsSection','confirmSection','flowSection','exitSection','newsSection','errorBox']
+    .forEach(function(id){ document.getElementById(id).innerHTML=''; });
 }
 
-function sc(v) { return v==='Bullish'?'#00ff88':v==='Bearish'?'#ff3b5c':'#888'; }
-function chk(v) { return v===true?'✅':v===false?'❌':'⏳'; }
-function cl(v) { return v===true?'green':v===false?'red':'gray'; }
-function pf(v) { return v>0?'$'+parseFloat(v).toFixed(2):'—'; }
+function sc(v){ return v==='Bullish'?'#00ff88':v==='Bearish'?'#ff3b5c':'#888'; }
+function chk(v){ return v===true?'✅':v===false?'❌':'⏳'; }
+function cl(v){ return v===true?'green':v===false?'red':'gray'; }
+function pf(v){ return v>0?'$'+parseFloat(v).toFixed(2):'—'; }
+
+function checkMilestones(price) {
+  var entry = parseFloat(document.getElementById('entryPrice').value);
+  var pos = document.getElementById('positionType').value;
+  if(!entry||!pos) return null;
+  var pct = pos==='CALLS'
+    ? ((price-entry)/entry)*100
+    : ((entry-price)/entry)*100;
+  if(pct<=-30) return { msg:'🛑 STOP LOSS — EXIT NOW (-30%)', cls:'v-exit' };
+  if(pct>=100) return { msg:'🚨 +100% — SELL 1, RUNNER IS FREE', cls:'v-exit' };
+  if(pct>=50)  return { msg:'⚡ +50% — SCALE OUT, SELL 1', cls:'v-exit' };
+  if(pct>=30)  return { msg:'✅ +30% MILESTONE HIT', cls:'v-calls' };
+  return null;
+}
+
+function startAutoRefresh() {
+  if(autoRefreshInterval) clearInterval(autoRefreshInterval);
+  autoRefreshInterval = setInterval(function(){
+    runAnalysis();
+  }, 60000);
+  document.getElementById('refreshStatus').textContent='🔄 Auto-refresh: ON (60s)';
+  document.getElementById('refreshStatus').style.color='#00ff88';
+}
 
 function runAnalysis() {
-  var sym = getTicker();
-  var btn = document.getElementById('analyzeBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Loading...';
+  var sym=getTicker();
+  var btn=document.getElementById('analyzeBtn');
+  btn.disabled=true;
+  btn.textContent='⏳ Loading...';
   clearAll();
-  setVerdict('v-loading', '⏳ ANALYZING ' + sym + '...');
+  setVerdict('v-loading','⏳ ANALYZING '+sym+'...');
 
-  var flowData = [];
-  var price = 0;
+  var flowData=[];
+  var price=0;
 
-  uw('/api/option-trades/flow-alerts?ticker_symbol=' + sym + '&limit=10')
-  .then(function(flowRes) {
-    flowData = flowRes.data || [];
-    price = parseFloat(flowData[0] && flowData[0].underlying_price ? flowData[0].underlying_price : 0);
+  uw('/api/option-trades/flow-alerts?ticker_symbol='+sym+'&limit=10')
+  .then(function(flowRes){
+    flowData=flowRes.data||[];
+    price=parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
     return Promise.all([
-      uw('/api/darkpool/' + sym),
+      uw('/api/darkpool/'+sym),
       uw('/api/market/market-tide'),
-      uw('/api/stock/' + sym + '/spot-exposures/strike'),
+      uw('/api/stock/'+sym+'/spot-exposures/strike'),
       uw('/api/news/headlines?limit=5'),
-      uw('/api/stock/' + sym + '/ohlc/1m?market_time=pre'),
-      uw('/api/stock/' + sym + '/ohlc/1m')
+      uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
+      uw('/api/stock/'+sym+'/ohlc/1m')
     ]);
   })
-  .then(function(results) {
-    var dpRes   = results[0];
-    var tideRes = results[1];
-    var gexRes  = results[2];
-    var newsRes = results[3];
-    var preOhlc = results[4];
-    var regOhlc = results[5];
+  .then(function(results){
+    var dpRes=results[0];
+    var tideRes=results[1];
+    var gexRes=results[2];
+    var newsRes=results[3];
+    var preOhlc=results[4];
+    var regOhlc=results[5];
 
-    var preCandles = (preOhlc.data || []).filter(function(c){ return c.market_time === 'pre'; });
-    var regCandles = (regOhlc.data || []).filter(function(c){ return c.market_time === 'r'; });
-    regCandles.sort(function(a,b){ return new Date(a.start_time) - new Date(b.start_time); });
+    var preCandles=(preOhlc.data||[]).filter(function(c){return c.market_time==='pre';});
+    var regCandles=(regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
+    regCandles.sort(function(a,b){return new Date(a.start_time)-new Date(b.start_time);});
 
-    var pmh = preCandles.length > 0 ? Math.max.apply(null, preCandles.map(function(c){ return parseFloat(c.high); })) : 0;
-    var pml = preCandles.length > 0 ? Math.min.apply(null, preCandles.map(function(c){ return parseFloat(c.low); })) : 0;
+    var pmh=preCandles.length>0?Math.max.apply(null,preCandles.map(function(c){return parseFloat(c.high);})):0;
+    var pml=preCandles.length>0?Math.min.apply(null,preCandles.map(function(c){return parseFloat(c.low);})):0;
 
-    var manualPMH = parseFloat(document.getElementById('manualPMH').value);
-    var manualPML = parseFloat(document.getElementById('manualPML').value);
-    if (!isNaN(manualPMH) && manualPMH > 0) pmh = manualPMH;
-    if (!isNaN(manualPML) && manualPML > 0) pml = manualPML;
+    var manualPMH=parseFloat(document.getElementById('manualPMH').value);
+    var manualPML=parseFloat(document.getElementById('manualPML').value);
+    if(!isNaN(manualPMH)&&manualPMH>0) pmh=manualPMH;
+    if(!isNaN(manualPML)&&manualPML>0) pml=manualPML;
 
-    var closes = regCandles.map(function(c){ return parseFloat(c.close); });
-    var ema8 = calcEMA(closes, 8);
+    var closes=regCandles.map(function(c){return parseFloat(c.close);});
+    var ema8=calcEMA(closes,8);
 
-    var vwap = 0;
-    if (regCandles.length > 0) {
-      var totalTPV = 0, totalVol = 0;
-      regCandles.forEach(function(c) {
-        var tp = (parseFloat(c.high)+parseFloat(c.low)+parseFloat(c.close))/3;
-        var vol = parseFloat(c.volume||0);
-        totalTPV += tp * vol;
-        totalVol += vol;
+    var vwap=0;
+    if(regCandles.length>0){
+      var totalTPV=0,totalVol=0;
+      regCandles.forEach(function(c){
+        var tp=(parseFloat(c.high)+parseFloat(c.low)+parseFloat(c.close))/3;
+        var vol=parseFloat(c.volume||0);
+        totalTPV+=tp*vol; totalVol+=vol;
       });
-      vwap = totalVol > 0 ? totalTPV / totalVol : 0;
+      vwap=totalVol>0?totalTPV/totalVol:0;
     }
 
-    var callPrem = 0, putPrem = 0;
-    flowData.forEach(function(f) {
-      var p = parseFloat(f.total_premium || f.premium || 0);
-      if ((f.put_call||'').toLowerCase()==='call') callPrem += p;
-      else putPrem += p;
+    var callPrem=0,putPrem=0;
+    flowData.forEach(function(f){
+      var p=parseFloat(f.total_premium||f.premium||0);
+      if((f.put_call||'').toLowerCase()==='call') callPrem+=p;
+      else putPrem+=p;
     });
-    var flowSentiment = callPrem > putPrem ? 'Bullish' : putPrem > callPrem ? 'Bearish' : 'Neutral';
-    var flowNet = ((callPrem - putPrem)/1e6).toFixed(2);
+    var flowSentiment=callPrem>putPrem?'Bullish':putPrem>callPrem?'Bearish':'Neutral';
+    var flowNet=((callPrem-putPrem)/1e6).toFixed(2);
 
-    var dpData = dpRes.data || [];
-    var dpAbove = dpData.filter(function(d){ return parseFloat(d.price||d.executed_price||0) > price; }).length;
-    var dpBelow = dpData.filter(function(d){ return parseFloat(d.price||d.executed_price||0) < price; }).length;
-    var darkPoolBias = dpAbove > dpBelow ? 'Bullish' : dpBelow > dpAbove ? 'Bearish' : 'Neutral';
+    var dpData=dpRes.data||[];
+    var dpAbove=dpData.filter(function(d){return parseFloat(d.price||d.executed_price||0)>price;}).length;
+    var dpBelow=dpData.filter(function(d){return parseFloat(d.price||d.executed_price||0)<price;}).length;
+    var darkPoolBias=dpAbove>dpBelow?'Bullish':dpBelow>dpAbove?'Bearish':'Neutral';
 
-    var tideArr = tideRes.data || [];
-    var latestTide = tideArr[tideArr.length-1] || {};
-    var tideNet = parseFloat(latestTide.net_call_premium || latestTide.net_premium || 0);
-    var marketTide = tideNet > 0 ? 'Bullish' : tideNet < 0 ? 'Bearish' : 'Neutral';
+    var tideArr=tideRes.data||[];
+    var latestTide=tideArr[tideArr.length-1]||{};
+    var tideNet=parseFloat(latestTide.net_call_premium||latestTide.net_premium||0);
+    var marketTide=tideNet>0?'Bullish':tideNet<0?'Bearish':'Neutral';
 
-    var gexData = gexRes.data || [];
-    gexData.sort(function(a,b){ return Math.abs(parseFloat(b.total_gex||b.gex||0)) - Math.abs(parseFloat(a.total_gex||a.gex||0)); });
-    var topGex = gexData[0] || null;
+    var gexData=gexRes.data||[];
+    gexData.sort(function(a,b){return Math.abs(parseFloat(b.total_gex||b.gex||0))-Math.abs(parseFloat(a.total_gex||a.gex||0));});
+    var topGex=gexData[0]||null;
+    var newsData=newsRes.data||newsRes.results||[];
 
-    var newsData = newsRes.data || newsRes.results || [];
+    var abovePMH=pmh>0?price>pmh:null;
+    var belowPML=pml>0?price<pml:null;
+    var aboveEMA=ema8?price>ema8:null;
+    var aboveVWAP=vwap>0?price>vwap:null;
 
-    var abovePMH  = pmh  > 0 ? price > pmh  : null;
-    var belowPML  = pml  > 0 ? price < pml  : null;
-    var aboveEMA  = ema8     ? price > ema8 : null;
-    var aboveVWAP = vwap > 0 ? price > vwap : null;
+    var verdict='NO TRADE';
+    var reason='Enter PMH/PML above or waiting for level break';
 
-    var verdict = 'NO TRADE';
-    var reason  = 'Enter PMH/PML above or waiting for level break';
-
-    if (abovePMH && aboveEMA && aboveVWAP) {
-      verdict = 'CALLS'; reason = 'Above PMH + 8 EMA + VWAP ✅';
-    } else if (belowPML && aboveEMA === false && aboveVWAP === false) {
-      verdict = 'PUTS'; reason = 'Below PML + 8 EMA + VWAP ✅';
-    } else if (pmh > 0 && pml > 0) {
-      reason = 'Between PMH/PML — Do NOT Diddle in the Middle';
-    } else if (ema8 && price < ema8) {
-      reason = 'Below 8 EMA — bearish lean, confirm PML';
-    } else if (ema8 && price > ema8) {
-      reason = 'Above 8 EMA — bullish lean, confirm PMH';
+    if(abovePMH&&aboveEMA&&aboveVWAP){
+      verdict='CALLS'; reason='Above PMH + 8 EMA + VWAP ✅';
+    } else if(belowPML&&aboveEMA===false&&aboveVWAP===false){
+      verdict='PUTS'; reason='Below PML + 8 EMA + VWAP ✅';
+    } else if(pmh>0&&pml>0){
+      reason='Between PMH/PML — Do NOT Diddle in the Middle';
+    } else if(ema8&&price<ema8){
+      reason='Below 8 EMA — bearish lean, confirm PML';
+    } else if(ema8&&price>ema8){
+      reason='Above 8 EMA — bullish lean, confirm PMH';
     }
 
-    var vMap = { CALLS:['v-calls','🟢 CALLS'], PUTS:['v-puts','🔴 PUTS'], 'NO TRADE':['v-notrade','⚠️ NO TRADE'] };
-    setVerdict(vMap[verdict][0], vMap[verdict][1]);
-    document.getElementById('verdictReason').textContent = reason;
+    var milestone=checkMilestones(price);
+    if(milestone){
+      setVerdict(milestone.cls, milestone.msg);
+      document.getElementById('alertBox').innerHTML=
+        '<div class="alert-box"><div class="alert-text">'+milestone.msg+'</div></div>';
+    } else {
+      var vMap={CALLS:['v-calls','🟢 CALLS'],PUTS:['v-puts','🔴 PUTS'],'NO TRADE':['v-notrade','⚠️ NO TRADE']};
+      setVerdict(vMap[verdict][0],vMap[verdict][1]);
+    }
 
-    if (price > 0) {
-      document.getElementById('priceDisplay').innerHTML =
+    document.getElementById('verdictReason').textContent=reason;
+
+    if(price>0){
+      document.getElementById('priceDisplay').innerHTML=
         '<div class="price-display"><div class="price-num">$'+price.toFixed(2)+'</div><div class="price-label">$'+sym+' • Live</div></div>';
     }
 
-    document.getElementById('ellisSection').innerHTML =
+    document.getElementById('ellisSection').innerHTML=
       '<div class="section"><div class="sec-title">Ellis Criteria (10m Chart)</div>'
       +'<div class="row"><span style="font-size:16px">'+chk(abovePMH)+'</span><div style="flex:1"><div class="row-label">Above PMH</div><div class="row-sub">Break pre-market high</div></div><span class="row-val '+cl(abovePMH)+'">'+pf(pmh)+'</span></div>'
       +'<div class="row"><span style="font-size:16px">'+chk(aboveEMA)+'</span><div style="flex:1"><div class="row-label">Above 8 EMA (10m)</div><div class="row-sub">Hold while above</div></div><span class="row-val '+cl(aboveEMA)+'">'+(ema8?'$'+ema8.toFixed(2):'—')+'</span></div>'
       +'<div class="row"><span style="font-size:16px">'+chk(aboveVWAP)+'</span><div style="flex:1"><div class="row-label">Above VWAP</div><div class="row-sub">Institutional benchmark</div></div><span class="row-val '+cl(aboveVWAP)+'">'+pf(vwap)+'</span></div>'
       +'</div>';
 
-    document.getElementById('levelsSection').innerHTML =
+    document.getElementById('levelsSection').innerHTML=
       '<div class="section"><div class="sec-title">Key Levels</div>'
       +'<div class="cards">'
       +'<div class="card"><div class="card-label">PMH</div><div class="card-val green">'+pf(pmh)+'</div></div>'
@@ -278,7 +331,7 @@ function runAnalysis() {
       +(topGex?'<div class="gex-box"><div style="color:#444;font-size:10px;text-transform:uppercase">Top GEX Strike</div><div class="yellow" style="font-family:monospace;font-size:15px;font-weight:700">$'+(topGex.strike||topGex.level||'?')+'</div></div>':'')
       +'</div>';
 
-    document.getElementById('confirmSection').innerHTML =
+    document.getElementById('confirmSection').innerHTML=
       '<div class="section"><div class="sec-title">Confirmation</div>'
       +'<div class="cards">'
       +'<div class="card"><div class="card-label">Options Flow</div><div class="card-val" style="color:'+sc(flowSentiment)+'">'+flowSentiment+'</div></div>'
@@ -288,90 +341,47 @@ function runAnalysis() {
       +'<div style="color:#555;font-size:12px;margin-top:6px">Net Premium: <span style="color:#fff;font-weight:700">'+(parseFloat(flowNet)>0?'+':'')+'$'+flowNet+'M</span></div>'
       +'</div>';
 
-    if (flowData.length > 0) {
-      var rows = '';
-      flowData.slice(0,6).forEach(function(f) {
-        var isCall = (f.put_call||'').toLowerCase()==='call';
-        var prem = parseFloat(f.total_premium||f.premium||0);
-        rows += '<div class="flow-row">'
+    if(flowData.length>0){
+      var rows='';
+      flowData.slice(0,6).forEach(function(f){
+        var isCall=(f.put_call||'').toLowerCase()==='call';
+        var prem=parseFloat(f.total_premium||f.premium||0);
+        rows+='<div class="flow-row">'
           +'<span style="color:'+(isCall?'#00ff88':'#ff3b5c')+';font-size:11px;font-weight:700;min-width:34px">'+(isCall?'CALL':'PUT')+'</span>'
           +'<span style="color:#ccc;font-size:12px;font-family:monospace;flex:1">$'+(f.strike_price||f.strike||'?')+' • '+(f.expiry||f.expiration_date||'?')+'</span>'
           +'<span style="color:#4488ff;font-size:12px">$'+(prem/1e6).toFixed(2)+'M</span>'
           +'</div>';
       });
-      document.getElementById('flowSection').innerHTML =
+      document.getElementById('flowSection').innerHTML=
         '<div class="section"><div class="sec-title">Top Flow Alerts — $'+sym+'</div>'+rows+'</div>';
     }
 
-    if (verdict==='CALLS'||verdict==='PUTS') {
-      document.getElementById('exitSection').innerHTML =
+    if(verdict==='CALLS'||verdict==='PUTS'){
+      document.getElementById('exitSection').innerHTML=
         '<div class="exit-box"><div class="exit-title">Exit Rule — Ellis</div>'
         +'<div class="exit-text">Hold while price stays '+(verdict==='CALLS'?'above':'below')+' 8 EMA: <strong style="color:#fff">$'+(ema8?ema8.toFixed(2):'—')+'</strong><br>8 EMA breaks → <strong class="red">EXIT IMMEDIATELY</strong></div></div>';
     }
 
-    if (newsData.length > 0) {
-      var nh = '';
-      newsData.slice(0,4).forEach(function(n){ nh += '<div class="news-item">'+(n.title||n.headline||'')+'</div>'; });
-      document.getElementById('newsSection').innerHTML =
+    if(newsData.length>0){
+      var nh='';
+      newsData.slice(0,4).forEach(function(n){ nh+='<div class="news-item">'+(n.title||n.headline||'')+'</div>'; });
+      document.getElementById('newsSection').innerHTML=
         '<div class="section"><div class="sec-title">Market News</div>'+nh+'</div>';
     }
 
-  document.getElementById('updatedTime').textContent = 'Updated: '+new Date().toLocaleTimeString();
-var milestone = checkMilestones(price);
-if (milestone) {
-  document.getElementById('verdictReason').textContent = milestone;
-  document.getElementById('verdictBox').style.animation = 'none';
-  document.getElementById('verdictBox').style.background = '#ff0000';
-  document.getElementById('verdictBox').style.color = '#fff';
-}
-startAutoRefresh();
-
+    document.getElementById('updatedTime').textContent='Updated: '+new Date().toLocaleTimeString();
+    startAutoRefresh();
   })
-  .catch(function(err) {
+  .catch(function(err){
     setVerdict('v-error','⚠️ ERROR');
-    document.getElementById('errorBox').innerHTML =
+    document.getElementById('errorBox').innerHTML=
       '<div class="error-box"><strong>Error:</strong> '+err.message+'</div>';
   })
-  .finally(function() {
-    btn.disabled = false;
-    btn.textContent = '🔄 Analyze';
+  .finally(function(){
+    btn.disabled=false;
+    btn.textContent='🔄 Analyze';
   });
-}
-}
-
-var autoRefreshInterval = null;
-var tradeEntry = 0;
-var tradeType = '';
-
-function startAutoRefresh() {
-  if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-  autoRefreshInterval = setInterval(function() {
-    runAnalysis();
-  }, 60000);
-}
-
-function setTradeEntry() {
-  var entry = prompt('Enter your entry price (e.g. 1.50):');
-  var type = prompt('CALLS or PUTS?').toUpperCase();
-  if (entry && type) {
-    tradeEntry = parseFloat(entry);
-    tradeType = type;
-    alert('Trade tracking set: ' + type + ' entry at $' + entry);
-  }
-}
-
-function checkMilestones(currentPrice) {
-  if (!tradeEntry || !tradeType) return '';
-  var change = tradeType === 'CALLS' 
-    ? ((currentPrice - tradeEntry) / tradeEntry) * 100
-    : ((tradeEntry - currentPrice) / tradeEntry) * 100;
-  if (change >= 100) return '🚨 +100% SELL 1 RUNNER RISK FREE';
-  if (change >= 50) return '⚡ +50% SCALE OUT — SELL 1 CONTRACT';
-  if (change >= 30) return '✅ +30% MILESTONE HIT';
-  if (change <= -30) return '🛑 -30% STOP LOSS — EXIT NOW';
-  return '';
 }
 </script>
 </body>
 </html>
-
