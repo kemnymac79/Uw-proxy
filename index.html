@@ -91,13 +91,15 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="pmh-row">
     <div class="pmh-box">
       <div class="pmh-label">PMH (manual)</div>
-      class="pmh-input" id="manualPMH" type="number" step="0.01" onchange="pmhValues[activeTicker]=this.value"
+    <input class="pmh-input" id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20" onchange="pmhValues[activeTicker]=this.value">
+
 
     </div>
     <div class="pmh-box">
-      class="pmh-input" id="manualPML" type="number" step="0.01" onchange="pmlValues[activeTicker]=this.value"
+     <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" onchange="pmlValues[activeTicker]=this.value">
 
-      <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10">
+
+    
     </div>
   </div>
   <div class="pmh-row" style="margin-top:4px;">
