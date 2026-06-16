@@ -78,8 +78,10 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
     <button class="tab" id="tab-QQQ" onclick="selectTicker('QQQ')">$QQQ</button>
 </div>
 <div class="tabs" style="margin-top:4px;">
-    <button class="tab active" id="tab-10m" onclick="selectTimeframe('10m')">10m</button>
-    <button class="tab" id="tab-30m" onclick="selectTimeframe('30m')">30m</button>
+  <button class="tab active" id="tab-SPY" onclick="selectTicker('SPY')">$SPY</button>
+<button class="tab" id="tab-QQQ" onclick="selectTicker('QQQ')">$QQQ</button>
+<button class="tab" id="tab-IWM" onclick="selectTicker('IWM')">$IWM</button>
+
 </div>
 
   <div class="input-row">
@@ -89,10 +91,12 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="pmh-row">
     <div class="pmh-box">
       <div class="pmh-label">PMH (manual)</div>
-      <input class="pmh-input" id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20">
+      class="pmh-input" id="manualPMH" type="number" step="0.01" onchange="pmhValues[activeTicker]=this.value"
+
     </div>
     <div class="pmh-box">
-      <div class="pmh-label">PML (manual)</div>
+      class="pmh-input" id="manualPML" type="number" step="0.01" onchange="pmlValues[activeTicker]=this.value"
+
       <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10">
     </div>
   </div>
@@ -132,6 +136,9 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 <script>
 var PROXY = 'https://uw-proxy-837b.onrender.com/proxy';
 var activeTicker = 'SPY';
+var pmhValues = { SPY: '', QQQ: '', IWM: '' };
+var pmlValues = { SPY: '', QQQ: '', IWM: '' };
+
 var activeTimeframe = '10m';
 
 function selectTimeframe(t) {
@@ -158,7 +165,9 @@ function selectTicker(t) {
   activeTicker = t;
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
   document.getElementById('tab-'+t).classList.add('active');
-  document.getElementById('customTicker').value = '';
+  document.getElementById('customTicker').value = '';document.getElementById('manualPMH').value = pmhValues[t] || '';
+document.getElementById('manualPML').value = pmlValues[t] || '';
+
 }
 
 function getTicker() {
