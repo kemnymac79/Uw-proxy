@@ -155,13 +155,11 @@ async function runAnalysis() {
     ]);
 
     const infoRaw = infoRes.status==='fulfilled' ? infoRes.value : null;
-const flowRecent = infoRaw?.data || [];
-const latestFlow = flowRecent[0] || {};
-const price = parseFloat(latestFlow.underlying_price || latestFlow.stock_price || latestFlow.price || 0);
-const vwap = parseFloat(latestFlow.vwap || 0);
-const pmh = parseFloat(latestFlow.pm_high || latestFlow.premarket_high || 0);
-const pml = parseFloat(latestFlow.pm_low || latestFlow.premarket_low || 0);
-
+const info = infoRaw?.data || {};
+const price = parseFloat(flowData[0]?.underlying_price || flowData[1]?.underlying_price || 0);
+const vwap = parseFloat(info.vwap || 0);
+const pmh = parseFloat(info.premarket_high || info.pm_high || 0);
+const pml = parseFloat(info.premarket_low || info.pm_low || 0);
     const ohlcRaw = ohlcRes.status==='fulfilled' ? ohlcRes.value : null;
     const candles = ohlcRaw?.data||ohlcRaw?.candles||ohlcRaw?.results||[];
     const sorted = [...candles].sort((a,b)=>new Date(a.date||a.time||a.t)-new Date(b.date||b.time||b.t));
