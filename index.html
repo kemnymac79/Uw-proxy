@@ -286,13 +286,21 @@ if (regCandles.length > 0) {
       document.getElementById('newsSection').innerHTML='<div class="section"><div class="sec-title">Market News</div>'+nh+'</div>';
     }
 
-    document.getElementById('updatedTime').textContent='Updated: '+new Date().toLocaleTimeString();
-  })
-  .catch(function(err){
-    setVerdict('v-error','⚠️ ERROR');
-    document.getElementById('errorBox').innerHTML='<div class="error-box"><strong>Error:</strong> '+err.message+'</div>';
-  })
-  .finally(function(){
+    document.getElementById('updatedTime').textContent='Updated: '+new Date().
+    uw('/api/stock/' + sym + '/ohlc/1m?market_time=pre'),
+uw('/api/stock/' + sym + '/ohlc/1m')
+]);
+})
+.then(function(results) {
+var dpRes = results[0];
+var tideRes = results[1];
+var gexRes = results[2];
+var newsRes = results[3];
+var preOhlc = results[4];
+var regOhlc = results[5];
+var preCandles = (preOhlc.data || []).filter(function(c){ return c.market_time === 'pre'; });
+var regCandles = (regOhlc.data || []).filter(function(c){ return c.market_time === 'r'; });
+
     btn.disabled=false;
     btn.textContent='🔄 Analyze';
   });
