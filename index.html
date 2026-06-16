@@ -76,7 +76,12 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="tabs">
     <button class="tab active" id="tab-SPY" onclick="selectTicker('SPY')">$SPY</button>
     <button class="tab" id="tab-QQQ" onclick="selectTicker('QQQ')">$QQQ</button>
-  </div>
+</div>
+<div class="tabs" style="margin-top:4px;">
+    <button class="tab active" id="tab-10m" onclick="selectTimeframe('10m')">10m</button>
+    <button class="tab" id="tab-30m" onclick="selectTimeframe('30m')">30m</button>
+</div>
+
   <div class="input-row">
     <input class="ticker-input" id="customTicker" placeholder="Any ticker: ON, NVDA, AMD..." oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')runAnalysis()">
     <button class="btn-sm" onclick="runAnalysis()">Go</button>
@@ -127,6 +132,14 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 <script>
 var PROXY = 'https://uw-proxy-837b.onrender.com/proxy';
 var activeTicker = 'SPY';
+var activeTimeframe = '10m';
+
+function selectTimeframe(t) {
+  activeTimeframe = t;
+  document.querySelectorAll('#tab-10m, #tab-30m').forEach(function(b){ b.classList.remove('active'); });
+  document.getElementById('tab-'+t).classList.add('active');
+}
+
 var autoRefreshInterval = null;
 var lastVerdict = '';
 var PUSHOVER_TOKEN = 'a6xvwbphhv423o7zys4utpe3ufir59';
@@ -226,8 +239,9 @@ function runAnalysis() {
       uw('/api/market/market-tide'),
       uw('/api/stock/'+sym+'/spot-exposures/strike'),
       uw('/api/news/headlines?limit=5'),
-      uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
-      uw('/api/stock/'+sym+'/ohlc/1m')
+  uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
+uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m'))
+
     ]);
   })
   .then(function(results){
