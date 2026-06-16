@@ -145,7 +145,7 @@ async function runAnalysis() {
 
   try {
     const [infoRes, flowRes, dpRes, tideRes, gexRes, newsRes, ohlcRes] = await Promise.allSettled([
-      uw('/api/stock/' + sym + '/info'),
+      uw('/api/stock/' + sym + '/flow-recent'),
       uw('/api/option-trades/flow-alerts?ticker_symbol=' + sym + '&limit=10'),
       uw('/api/darkpool/' + sym),
       uw('/api/market/market-tide'),
@@ -155,11 +155,12 @@ async function runAnalysis() {
     ]);
 
     const infoRaw = infoRes.status==='fulfilled' ? infoRes.value : null;
-    const info = infoRaw?.data || infoRaw || {};
-    const price = parseFloat(info.price||info.last_price||info.last_trade_price||info.close||0);
-    const vwap = parseFloat(info.vwap||info.vwap_price||info.intraday_vwap||0);
-    const pmh = parseFloat(info.premarket_high||info.pm_high||info.pre_market_high||0);
-    const pml = parseFloat(info.premarket_low||info.pm_low||info.pre_market_low||0);
+const flowRecent = infoRaw?.data || [];
+const latestFlow = flowRecent[0] || {};
+const price = parseFloat(latestFlow.underlying_price || latestFlow.stock_price || latestFlow.price || 0);
+const vwap = parseFloat(latestFlow.vwap || 0);
+const pmh = parseFloat(latestFlow.pm_high || latestFlow.premarket_high || 0);
+const pml = parseFloat(latestFlow.pm_low || latestFlow.premarket_low || 0);
 
     const ohlcRaw = ohlcRes.status==='fulfilled' ? ohlcRes.value : null;
     const candles = ohlcRaw?.data||ohlcRaw?.candles||ohlcRaw?.results||[];
