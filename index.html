@@ -316,7 +316,16 @@ function runAnalysis() {
         '<div class="section"><div class="sec-title">Market News</div>'+nh+'</div>';
     }
 
-    document.getElementById('updatedTime').textContent = 'Updated: '+new Date().toLocaleTimeString();
+  document.getElementById('updatedTime').textContent = 'Updated: '+new Date().toLocaleTimeString();
+var milestone = checkMilestones(price);
+if (milestone) {
+  document.getElementById('verdictReason').textContent = milestone;
+  document.getElementById('verdictBox').style.animation = 'none';
+  document.getElementById('verdictBox').style.background = '#ff0000';
+  document.getElementById('verdictBox').style.color = '#fff';
+}
+startAutoRefresh();
+
   })
   .catch(function(err) {
     setVerdict('v-error','⚠️ ERROR');
@@ -328,6 +337,41 @@ function runAnalysis() {
     btn.textContent = '🔄 Analyze';
   });
 }
+}
+
+var autoRefreshInterval = null;
+var tradeEntry = 0;
+var tradeType = '';
+
+function startAutoRefresh() {
+  if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+  autoRefreshInterval = setInterval(function() {
+    runAnalysis();
+  }, 60000);
+}
+
+function setTradeEntry() {
+  var entry = prompt('Enter your entry price (e.g. 1.50):');
+  var type = prompt('CALLS or PUTS?').toUpperCase();
+  if (entry && type) {
+    tradeEntry = parseFloat(entry);
+    tradeType = type;
+    alert('Trade tracking set: ' + type + ' entry at $' + entry);
+  }
+}
+
+function checkMilestones(currentPrice) {
+  if (!tradeEntry || !tradeType) return '';
+  var change = tradeType === 'CALLS' 
+    ? ((currentPrice - tradeEntry) / tradeEntry) * 100
+    : ((tradeEntry - currentPrice) / tradeEntry) * 100;
+  if (change >= 100) return '🚨 +100% SELL 1 RUNNER RISK FREE';
+  if (change >= 50) return '⚡ +50% SCALE OUT — SELL 1 CONTRACT';
+  if (change >= 30) return '✅ +30% MILESTONE HIT';
+  if (change <= -30) return '🛑 -30% STOP LOSS — EXIT NOW';
+  return '';
+}
 </script>
 </body>
 </html>
+
