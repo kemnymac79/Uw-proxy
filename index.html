@@ -75,6 +75,18 @@ body { background: #050510; color: #fff; font-family: 'Inter', sans-serif; max-w
     <button class="btn-sm" onclick="runAnalysis()">Go</button>
   </div>
   <div class="updated" id="updatedTime"></div>
+<div style="display:flex;gap:6px;margin-top:8px;">
+<div style="flex:1;">
+<div style="color:#444;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">PMH</div>
+<input id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20" style="width:100%;background:#0d0d1a;border:1px solid #00ff8844;border-radius:7px;padding:6px 10px;color:#00ff88;font-size:13px;font-family:monospace;outline:none;">
+</div>
+<div style="flex:1;">
+<div style="color:#444;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">PML</div>
+<input id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" style="width:100%;background:#0d0d1a;border:1px solid #ff3b5c44;border-radius:7px;padding:6px 10px;color:#ff3b5c;font-size:13px;font-family:monospace;outline:none;">
+</div>
+</div>
+</div>
+
 </div>
 <div class="content">
   <div class="verdict v-ready" id="verdictBox">📊 Hit Analyze</div>
@@ -176,6 +188,12 @@ var preCandles = candles.filter(function(c){ return c.market_time === 'pre'; });
 var regCandles = candles.filter(function(c){ return c.market_time === 'r'; });
 var pmh = preCandles.length > 0 ? Math.max.apply(null, preCandles.map(function(c){ return parseFloat(c.high); })) : 0;
 var pml = preCandles.length > 0 ? Math.min.apply(null, preCandles.map(function(c){ return parseFloat(c.low); })) : 0;
+var manualPMH = parseFloat(document.getElementById('manualPMH').value);
+var manualPML = parseFloat(document.getElementById('manualPML').value);
+if (!isNaN(manualPMH) && manualPMH > 0) pmh = manualPMH;
+if (!isNaN(manualPML) && manualPML > 0) pml = manualPML;
+
+
 var closes = regCandles.map(function(c){ return parseFloat(c.close); });
 var ema8 = calcEMA(closes, 8);
 var vwap = 0;
