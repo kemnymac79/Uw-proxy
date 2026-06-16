@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import requests
 
 app = Flask(__name__)
+CORS(app)
 
 UW_KEY = "4bc930e0-299e-41dc-989b-f2890def11c1"
 UW_BASE = "https://api.unusualwhales.com"
@@ -17,9 +19,7 @@ def proxy():
     if not path:
         return jsonify({"error": "No path"}), 400
     resp = requests.get(UW_BASE + path, headers=HEADERS)
-    response = jsonify(resp.json())
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response
+    return jsonify(resp.json())
 
 @app.route("/")
 def home():
