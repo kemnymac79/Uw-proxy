@@ -6,20 +6,24 @@
 <title>Ellis Trading Dashboard</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #050510; color: #fff; font-family: 'Inter', sans-serif; max-width: 480px; margin: 0 auto; padding-bottom: 40px; }
+body { background: #050510; color: #fff; font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding-bottom: 40px; }
 .header { background: #080818; padding: 16px; border-bottom: 1px solid #1a1a2e; position: sticky; top: 0; z-index: 10; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .title-sub { font-size: 10px; color: #444; letter-spacing: 3px; text-transform: uppercase; }
 .title { font-size: 18px; font-weight: 900; }
 .btn { background: #1a1aff; border: none; color: #fff; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-weight: 700; }
-.btn:disabled { background: #1a1a2e; color: #555; cursor: not-allowed; }
+.btn:disabled { background: #1a1a2e; color: #555; }
 .btn-sm { background: #1a1aff; border: none; color: #fff; border-radius: 7px; padding: 7px 14px; font-size: 13px; cursor: pointer; font-weight: 700; }
 .tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .tab { flex: 1; padding: 7px; border-radius: 7px; border: 2px solid #1a1a2e; background: transparent; color: #555; font-weight: 700; font-size: 13px; cursor: pointer; }
 .tab.active { border-color: #1a1aff; background: #1a1aff22; color: #fff; }
-.input-row { display: flex; gap: 6px; }
+.input-row { display: flex; gap: 6px; margin-bottom: 8px; }
 .ticker-input { flex: 1; background: #0d0d1a; border: 1px solid #1a1a2e; border-radius: 7px; padding: 7px 12px; color: #fff; font-size: 13px; outline: none; }
-.updated { color: #333; font-size: 10px; margin-top: 6px; text-align: right; }
+.pmh-row { display: flex; gap: 6px; margin-bottom: 4px; }
+.pmh-box { flex: 1; }
+.pmh-label { color: #444; font-size: 9px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+.pmh-input { width: 100%; background: #0d0d1a; border: 1px solid #1a1a2e; border-radius: 7px; padding: 6px 10px; color: #fff; font-size: 13px; font-family: monospace; outline: none; }
+.updated { color: #333; font-size: 10px; text-align: right; }
 .content { padding: 16px; }
 .verdict { border-radius: 12px; padding: 14px 28px; font-size: 22px; font-weight: 900; letter-spacing: 2px; text-align: center; margin-bottom: 8px; }
 .v-ready { background: #0a0a1a; color: #444; border: 1px solid #1a1a2e; }
@@ -38,7 +42,7 @@ body { background: #050510; color: #fff; font-family: 'Inter', sans-serif; max-w
 .row:last-child { border-bottom: none; }
 .row-label { color: #ccc; font-size: 13px; }
 .row-sub { color: #555; font-size: 11px; }
-.row-val { font-size: 12px; font-weight: 700; font-family: monospace; }
+.row-val { font-size: 12px; font-weight: 700; font-family: monospace; margin-left: auto; }
 .green { color: #00ff88; } .red { color: #ff3b5c; } .gray { color: #888; }
 .purple { color: #a855f7; } .yellow { color: #f5a623; }
 .cards { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -69,24 +73,20 @@ body { background: #050510; color: #fff; font-family: 'Inter', sans-serif; max-w
     <button class="tab" id="tab-QQQ" onclick="selectTicker('QQQ')">$QQQ</button>
   </div>
   <div class="input-row">
-    <input class="ticker-input" id="customTicker" placeholder="Any ticker: ON, NVDA, AMD..."
-      oninput="this.value=this.value.toUpperCase()"
-      onkeydown="if(event.key==='Enter')runAnalysis()">
+    <input class="ticker-input" id="customTicker" placeholder="Any ticker: ON, NVDA, AMD..." oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')runAnalysis()">
     <button class="btn-sm" onclick="runAnalysis()">Go</button>
   </div>
+  <div class="pmh-row">
+    <div class="pmh-box">
+      <div class="pmh-label">PMH (manual)</div>
+      <input class="pmh-input" id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20">
+    </div>
+    <div class="pmh-box">
+      <div class="pmh-label">PML (manual)</div>
+      <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10">
+    </div>
+  </div>
   <div class="updated" id="updatedTime"></div>
-<div style="display:flex;gap:6px;margin-top:8px;">
-<div style="flex:1;">
-<div style="color:#444;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">PMH</div>
-<input id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20" style="width:100%;background:#0d0d1a;border:1px solid #00ff8844;border-radius:7px;padding:6px 10px;color:#00ff88;font-size:13px;font-family:monospace;outline:none;">
-</div>
-<div style="flex:1;">
-<div style="color:#444;font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">PML</div>
-<input id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" style="width:100%;background:#0d0d1a;border:1px solid #ff3b5c44;border-radius:7px;padding:6px 10px;color:#ff3b5c;font-size:13px;font-family:monospace;outline:none;">
-</div>
-</div>
-</div>
-
 </div>
 <div class="content">
   <div class="verdict v-ready" id="verdictBox">📊 Hit Analyze</div>
@@ -124,7 +124,7 @@ function uw(path) {
 }
 
 function calcEMA(arr, period) {
-  if (arr.length < period) return null;
+  if (!arr || arr.length < period) return null;
   var k = 2 / (period + 1);
   var ema = arr.slice(0, period).reduce(function(a,b){ return a+b; }, 0) / period;
   for (var i = period; i < arr.length; i++) ema = arr[i] * k + ema * (1 - k);
@@ -157,113 +157,118 @@ function runAnalysis() {
 
   var flowData = [];
   var price = 0;
-  var ema8 = null;
-  var closes = [];
 
   uw('/api/option-trades/flow-alerts?ticker_symbol=' + sym + '&limit=10')
   .then(function(flowRes) {
     flowData = flowRes.data || [];
     price = parseFloat(flowData[0] && flowData[0].underlying_price ? flowData[0].underlying_price : 0);
-
     return Promise.all([
       uw('/api/darkpool/' + sym),
       uw('/api/market/market-tide'),
       uw('/api/stock/' + sym + '/spot-exposures/strike'),
       uw('/api/news/headlines?limit=5'),
-     uw('/api/stock/' + sym + '/ohlc/1m?market_time=pre,r')
-
-
+      uw('/api/stock/' + sym + '/ohlc/1m?market_time=pre'),
+      uw('/api/stock/' + sym + '/ohlc/1m')
     ]);
   })
   .then(function(results) {
-    var dpRes = results[0];
+    var dpRes   = results[0];
     var tideRes = results[1];
-    var gexRes = results[2];
+    var gexRes  = results[2];
     var newsRes = results[3];
-    var ohlcRes = results[4];
+    var preOhlc = results[4];
+    var regOhlc = results[5];
 
-    var candles = ohlcRes.data || [];
-candles.sort(function(a,b){ return new Date(a.start_time) - new Date(b.start_time); });
-var preCandles = candles.filter(function(c){ return c.market_time === 'pre'; });
-var regCandles = candles.filter(function(c){ return c.market_time === 'r'; });
-var pmh = preCandles.length > 0 ? Math.max.apply(null, preCandles.map(function(c){ return parseFloat(c.high); })) : 0;
-var pml = preCandles.length > 0 ? Math.min.apply(null, preCandles.map(function(c){ return parseFloat(c.low); })) : 0;
-var manualPMH = parseFloat(document.getElementById('manualPMH').value);
-var manualPML = parseFloat(document.getElementById('manualPML').value);
-if (!isNaN(manualPMH) && manualPMH > 0) pmh = manualPMH;
-if (!isNaN(manualPML) && manualPML > 0) pml = manualPML;
+    var preCandles = (preOhlc.data || []).filter(function(c){ return c.market_time === 'pre'; });
+    var regCandles = (regOhlc.data || []).filter(function(c){ return c.market_time === 'r'; });
+    regCandles.sort(function(a,b){ return new Date(a.start_time) - new Date(b.start_time); });
 
+    var pmh = preCandles.length > 0 ? Math.max.apply(null, preCandles.map(function(c){ return parseFloat(c.high); })) : 0;
+    var pml = preCandles.length > 0 ? Math.min.apply(null, preCandles.map(function(c){ return parseFloat(c.low); })) : 0;
 
-var closes = regCandles.map(function(c){ return parseFloat(c.close); });
-var ema8 = calcEMA(closes, 8);
-var vwap = 0;
-if (regCandles.length > 0) {
-  var totalTPV = 0; var totalVol = 0;
-  regCandles.forEach(function(c) {
-    var tp = (parseFloat(c.high)+parseFloat(c.low)+parseFloat(c.close))/3;
-    var vol = parseFloat(c.volume||0);
-    totalTPV += tp * vol;
-    totalVol += vol;
-  });
-  vwap = totalVol > 0 ? totalTPV / totalVol : 0;
-}
+    var manualPMH = parseFloat(document.getElementById('manualPMH').value);
+    var manualPML = parseFloat(document.getElementById('manualPML').value);
+    if (!isNaN(manualPMH) && manualPMH > 0) pmh = manualPMH;
+    if (!isNaN(manualPML) && manualPML > 0) pml = manualPML;
 
+    var closes = regCandles.map(function(c){ return parseFloat(c.close); });
+    var ema8 = calcEMA(closes, 8);
 
-    
+    var vwap = 0;
+    if (regCandles.length > 0) {
+      var totalTPV = 0, totalVol = 0;
+      regCandles.forEach(function(c) {
+        var tp = (parseFloat(c.high)+parseFloat(c.low)+parseFloat(c.close))/3;
+        var vol = parseFloat(c.volume||0);
+        totalTPV += tp * vol;
+        totalVol += vol;
+      });
+      vwap = totalVol > 0 ? totalTPV / totalVol : 0;
+    }
 
-    var callPrem = 0; var putPrem = 0;
+    var callPrem = 0, putPrem = 0;
     flowData.forEach(function(f) {
-      var p = parseFloat(f.total_premium||f.premium||0);
+      var p = parseFloat(f.total_premium || f.premium || 0);
       if ((f.put_call||'').toLowerCase()==='call') callPrem += p;
       else putPrem += p;
     });
-    var flowSentiment = callPrem>putPrem?'Bullish':putPrem>callPrem?'Bearish':'Neutral';
-    var flowNet = ((callPrem-putPrem)/1e6).toFixed(2);
+    var flowSentiment = callPrem > putPrem ? 'Bullish' : putPrem > callPrem ? 'Bearish' : 'Neutral';
+    var flowNet = ((callPrem - putPrem)/1e6).toFixed(2);
 
     var dpData = dpRes.data || [];
-    var dpAbove = dpData.filter(function(d){ return parseFloat(d.price||d.executed_price||0)>price; }).length;
-    var dpBelow = dpData.filter(function(d){ return parseFloat(d.price||d.executed_price||0)<price; }).length;
-    var darkPoolBias = dpAbove>dpBelow?'Bullish':dpBelow>dpAbove?'Bearish':'Neutral';
+    var dpAbove = dpData.filter(function(d){ return parseFloat(d.price||d.executed_price||0) > price; }).length;
+    var dpBelow = dpData.filter(function(d){ return parseFloat(d.price||d.executed_price||0) < price; }).length;
+    var darkPoolBias = dpAbove > dpBelow ? 'Bullish' : dpBelow > dpAbove ? 'Bearish' : 'Neutral';
 
     var tideArr = tideRes.data || [];
     var latestTide = tideArr[tideArr.length-1] || {};
-    var tideNet = parseFloat(latestTide.net_call_premium||latestTide.net_premium||0);
-    var marketTide = tideNet>0?'Bullish':tideNet<0?'Bearish':'Neutral';
+    var tideNet = parseFloat(latestTide.net_call_premium || latestTide.net_premium || 0);
+    var marketTide = tideNet > 0 ? 'Bullish' : tideNet < 0 ? 'Bearish' : 'Neutral';
 
     var gexData = gexRes.data || [];
-    gexData.sort(function(a,b){ return Math.abs(parseFloat(b.total_gex||b.gex||0))-Math.abs(parseFloat(a.total_gex||a.gex||0)); });
+    gexData.sort(function(a,b){ return Math.abs(parseFloat(b.total_gex||b.gex||0)) - Math.abs(parseFloat(a.total_gex||a.gex||0)); });
     var topGex = gexData[0] || null;
 
     var newsData = newsRes.data || newsRes.results || [];
 
-    var abovePMH = pmh>0 ? price>pmh : null;
-    var belowPML = pml>0 ? price<pml : null;
-    var aboveEMA = ema8 ? price>ema8 : null;
-    var aboveVWAP = vwap>0 ? price>vwap : null;
+    var abovePMH  = pmh  > 0 ? price > pmh  : null;
+    var belowPML  = pml  > 0 ? price < pml  : null;
+    var aboveEMA  = ema8     ? price > ema8 : null;
+    var aboveVWAP = vwap > 0 ? price > vwap : null;
 
     var verdict = 'NO TRADE';
-    var reason = 'PMH/PML not available — confirm levels manually';
-    if (price===0) { reason = 'No price data — market may be closed'; }
-    else if (abovePMH && aboveEMA && aboveVWAP) { verdict='CALLS'; reason='Above PMH + 8 EMA + VWAP ✅'; }
-    else if (belowPML && aboveEMA===false && aboveVWAP===false) { verdict='PUTS'; reason='Below PML + 8 EMA + VWAP ✅'; }
-    else if (ema8 && price>ema8) { reason='Above 8 EMA — confirm PMH/VWAP manually'; }
-    else if (ema8 && price<ema8) { reason='Below 8 EMA — bearish lean, confirm PML/VWAP'; }
+    var reason  = 'Enter PMH/PML above or waiting for level break';
 
-    var vMap = {CALLS:['v-calls','🟢 CALLS'],PUTS:['v-puts','🔴 PUTS'],'NO TRADE':['v-notrade','⚠️ NO TRADE']};
+    if (abovePMH && aboveEMA && aboveVWAP) {
+      verdict = 'CALLS'; reason = 'Above PMH + 8 EMA + VWAP ✅';
+    } else if (belowPML && aboveEMA === false && aboveVWAP === false) {
+      verdict = 'PUTS'; reason = 'Below PML + 8 EMA + VWAP ✅';
+    } else if (pmh > 0 && pml > 0) {
+      reason = 'Between PMH/PML — Do NOT Diddle in the Middle';
+    } else if (ema8 && price < ema8) {
+      reason = 'Below 8 EMA — bearish lean, confirm PML';
+    } else if (ema8 && price > ema8) {
+      reason = 'Above 8 EMA — bullish lean, confirm PMH';
+    }
+
+    var vMap = { CALLS:['v-calls','🟢 CALLS'], PUTS:['v-puts','🔴 PUTS'], 'NO TRADE':['v-notrade','⚠️ NO TRADE'] };
     setVerdict(vMap[verdict][0], vMap[verdict][1]);
     document.getElementById('verdictReason').textContent = reason;
 
-    if (price>0) {
-      document.getElementById('priceDisplay').innerHTML = '<div class="price-display"><div class="price-num">$'+price.toFixed(2)+'</div><div class="price-label">$'+sym+' • Live</div></div>';
+    if (price > 0) {
+      document.getElementById('priceDisplay').innerHTML =
+        '<div class="price-display"><div class="price-num">$'+price.toFixed(2)+'</div><div class="price-label">$'+sym+' • Live</div></div>';
     }
 
-    document.getElementById('ellisSection').innerHTML = '<div class="section"><div class="sec-title">Ellis Criteria (10m Chart)</div>'
+    document.getElementById('ellisSection').innerHTML =
+      '<div class="section"><div class="sec-title">Ellis Criteria (10m Chart)</div>'
       +'<div class="row"><span style="font-size:16px">'+chk(abovePMH)+'</span><div style="flex:1"><div class="row-label">Above PMH</div><div class="row-sub">Break pre-market high</div></div><span class="row-val '+cl(abovePMH)+'">'+pf(pmh)+'</span></div>'
-      +'<div class="row"><span style="font-size:16px">'+chk(aboveEMA)+'</span><div style="flex:1"><div class="row-label">Above 8 EMA (10m)</div><div class="row-sub">Hold while above</div></div><span class="row-val '+cl(aboveEMA)+'">'+(ema8?'$'+ema8.toFixed(2):closes.length+' candles')+'</span></div>'
+      +'<div class="row"><span style="font-size:16px">'+chk(aboveEMA)+'</span><div style="flex:1"><div class="row-label">Above 8 EMA (10m)</div><div class="row-sub">Hold while above</div></div><span class="row-val '+cl(aboveEMA)+'">'+(ema8?'$'+ema8.toFixed(2):'—')+'</span></div>'
       +'<div class="row"><span style="font-size:16px">'+chk(aboveVWAP)+'</span><div style="flex:1"><div class="row-label">Above VWAP</div><div class="row-sub">Institutional benchmark</div></div><span class="row-val '+cl(aboveVWAP)+'">'+pf(vwap)+'</span></div>'
       +'</div>';
 
-    document.getElementById('levelsSection').innerHTML = '<div class="section"><div class="sec-title">Key Levels</div>'
+    document.getElementById('levelsSection').innerHTML =
+      '<div class="section"><div class="sec-title">Key Levels</div>'
       +'<div class="cards">'
       +'<div class="card"><div class="card-label">PMH</div><div class="card-val green">'+pf(pmh)+'</div></div>'
       +'<div class="card"><div class="card-label">PML</div><div class="card-val red">'+pf(pml)+'</div></div>'
@@ -273,7 +278,8 @@ if (regCandles.length > 0) {
       +(topGex?'<div class="gex-box"><div style="color:#444;font-size:10px;text-transform:uppercase">Top GEX Strike</div><div class="yellow" style="font-family:monospace;font-size:15px;font-weight:700">$'+(topGex.strike||topGex.level||'?')+'</div></div>':'')
       +'</div>';
 
-    document.getElementById('confirmSection').innerHTML = '<div class="section"><div class="sec-title">Confirmation</div>'
+    document.getElementById('confirmSection').innerHTML =
+      '<div class="section"><div class="sec-title">Confirmation</div>'
       +'<div class="cards">'
       +'<div class="card"><div class="card-label">Options Flow</div><div class="card-val" style="color:'+sc(flowSentiment)+'">'+flowSentiment+'</div></div>'
       +'<div class="card"><div class="card-label">Market Tide</div><div class="card-val" style="color:'+sc(marketTide)+'">'+marketTide+'</div></div>'
@@ -282,45 +288,44 @@ if (regCandles.length > 0) {
       +'<div style="color:#555;font-size:12px;margin-top:6px">Net Premium: <span style="color:#fff;font-weight:700">'+(parseFloat(flowNet)>0?'+':'')+'$'+flowNet+'M</span></div>'
       +'</div>';
 
-    if (flowData.length>0) {
-      var rows='';
-      flowData.slice(0,6).forEach(function(f){
-        var isCall=(f.put_call||'').toLowerCase()==='call';
-        var prem=parseFloat(f.total_premium||f.premium||0);
-        rows+='<div class="flow-row"><span style="color:'+(isCall?'#00ff88':'#ff3b5c')+';font-size:11px;font-weight:700;min-width:34px">'+(isCall?'CALL':'PUT')+'</span>'
+    if (flowData.length > 0) {
+      var rows = '';
+      flowData.slice(0,6).forEach(function(f) {
+        var isCall = (f.put_call||'').toLowerCase()==='call';
+        var prem = parseFloat(f.total_premium||f.premium||0);
+        rows += '<div class="flow-row">'
+          +'<span style="color:'+(isCall?'#00ff88':'#ff3b5c')+';font-size:11px;font-weight:700;min-width:34px">'+(isCall?'CALL':'PUT')+'</span>'
           +'<span style="color:#ccc;font-size:12px;font-family:monospace;flex:1">$'+(f.strike_price||f.strike||'?')+' • '+(f.expiry||f.expiration_date||'?')+'</span>'
-          +'<span style="color:#4488ff;font-size:12px">$'+(prem/1e6).toFixed(2)+'M</span></div>';
+          +'<span style="color:#4488ff;font-size:12px">$'+(prem/1e6).toFixed(2)+'M</span>'
+          +'</div>';
       });
-      document.getElementById('flowSection').innerHTML='<div class="section"><div class="sec-title">Top Flow Alerts — $'+sym+'</div>'+rows+'</div>';
+      document.getElementById('flowSection').innerHTML =
+        '<div class="section"><div class="sec-title">Top Flow Alerts — $'+sym+'</div>'+rows+'</div>';
     }
 
     if (verdict==='CALLS'||verdict==='PUTS') {
-      document.getElementById('exitSection').innerHTML='<div class="exit-box"><div class="exit-title">Exit Rule — Ellis</div><div class="exit-text">Hold while price stays '+(verdict==='CALLS'?'above':'below')+' 8 EMA: <strong style="color:#fff">$'+(ema8?ema8.toFixed(2):'—')+'</strong><br>8 EMA breaks → <strong class="red">EXIT IMMEDIATELY</strong></div></div>';
+      document.getElementById('exitSection').innerHTML =
+        '<div class="exit-box"><div class="exit-title">Exit Rule — Ellis</div>'
+        +'<div class="exit-text">Hold while price stays '+(verdict==='CALLS'?'above':'below')+' 8 EMA: <strong style="color:#fff">$'+(ema8?ema8.toFixed(2):'—')+'</strong><br>8 EMA breaks → <strong class="red">EXIT IMMEDIATELY</strong></div></div>';
     }
 
-    if (newsData.length>0) {
-      var nh='';
-      newsData.slice(0,4).forEach(function(n){ nh+='<div class="news-item">'+(n.title||n.headline||'')+'</div>'; });
-      document.getElementById('newsSection').innerHTML='<div class="section"><div class="sec-title">Market News</div>'+nh+'</div>';
+    if (newsData.length > 0) {
+      var nh = '';
+      newsData.slice(0,4).forEach(function(n){ nh += '<div class="news-item">'+(n.title||n.headline||'')+'</div>'; });
+      document.getElementById('newsSection').innerHTML =
+        '<div class="section"><div class="sec-title">Market News</div>'+nh+'</div>';
     }
 
-    document.getElementById('updatedTime').textContent='Updated: '+new Date().
-    uw('/api/stock/' + sym + '/ohlc/1m?market_time=pre'),
-uw('/api/stock/' + sym + '/ohlc/1m')
-]);
-})
-.then(function(results) {
-var dpRes = results[0];
-var tideRes = results[1];
-var gexRes = results[2];
-var newsRes = results[3];
-var preOhlc = results[4];
-var regOhlc = results[5];
-var preCandles = (preOhlc.data || []).filter(function(c){ return c.market_time === 'pre'; });
-var regCandles = (regOhlc.data || []).filter(function(c){ return c.market_time === 'r'; });
-
-    btn.disabled=false;
-    btn.textContent='🔄 Analyze';
+    document.getElementById('updatedTime').textContent = 'Updated: '+new Date().toLocaleTimeString();
+  })
+  .catch(function(err) {
+    setVerdict('v-error','⚠️ ERROR');
+    document.getElementById('errorBox').innerHTML =
+      '<div class="error-box"><strong>Error:</strong> '+err.message+'</div>';
+  })
+  .finally(function() {
+    btn.disabled = false;
+    btn.textContent = '🔄 Analyze';
   });
 }
 </script>
