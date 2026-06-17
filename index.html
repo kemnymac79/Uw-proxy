@@ -74,8 +74,7 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
     <button class="btn" id="analyzeBtn" onclick="runAnalysis()">🔄 Analyze</button>
   </div>
   <div class="tabs">
-    <button class="tab active" id="tab-SPY" onclick="selectTicker('SPY')">$SPY</button>
-    <button class="tab" id="tab-QQQ" onclick="selectTicker('QQQ')">$QQQ</button>
+    
 </div>
 <div class="tabs" style="margin-top:4px;">
   <button class="tab active" id="tab-SPY" onclick="selectTicker('SPY')">$SPY</button>
@@ -96,6 +95,8 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 
     </div>
     <div class="pmh-box">
+      <div class="pmh-label">PML (manual)</div>
+
      <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" onchange="pmlValues[activeTicker]=this.value">
 
 
