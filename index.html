@@ -7,16 +7,14 @@
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #050510; color: #fff; font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding-bottom: 40px; }
-.header { background: #080818; padding: 16px; border-bottom: 1px solid #1a1a2e;  z-index: 10; }
+.header { background: #080818; padding: 16px; border-bottom: 1px solid #1a1a2e; position: sticky; top: 0; z-index: 10; }
 .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .title-sub { font-size: 10px; color: #444; letter-spacing: 3px; text-transform: uppercase; }
 .title { font-size: 18px; font-weight: 900; }
 .btn { background: #1a1aff; border: none; color: #fff; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-weight: 700; }
 .btn:disabled { background: #1a1a2e; color: #555; }
 .btn-sm { background: #1a1aff; border: none; color: #fff; border-radius: 7px; padding: 7px 14px; font-size: 13px; cursor: pointer; font-weight: 700; }
-{ display: flex; gap: 6px; margin-bottom: 8px; position: relative; z-index: 100;
-
-
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; position: relative; z-index: 100; }
 .tab { flex: 1; padding: 7px; border-radius: 7px; border: 2px solid #1a1a2e; background: transparent; color: #555; font-weight: 700; font-size: 13px; cursor: pointer; }
 .tab.active { border-color: #1a1aff; background: #1a1aff22; color: #fff; }
 .input-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -75,14 +73,11 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
     </div>
     <button class="btn" id="analyzeBtn" onclick="runAnalysis()">🔄 Analyze</button>
   </div>
-  
-<div class="tabs" style="margin-top:4px;">
-  <button class="tab active" id="tab-SPY" onclick="selectTicker('SPY')">$SPY</button>
-<button class="tab" id="tab-QQQ" onclick="selectTicker('QQQ')">$QQQ</button>
-<button class="tab" id="tab-IWM" onclick="selectTicker('IWM')">$IWM</button>
-
-</div>
-
+  <div class="tabs" style="margin-top:4px;">
+    <button class="tab active" id="tab-SPY" onclick="selectTicker('SPY')">$SPY</button>
+    <button class="tab" id="tab-QQQ" onclick="selectTicker('QQQ')">$QQQ</button>
+    <button class="tab" id="tab-IWM" onclick="selectTicker('IWM')">$IWM</button>
+  </div>
   <div class="input-row">
     <input class="ticker-input" id="customTicker" placeholder="Any ticker: ON, NVDA, AMD..." oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')runAnalysis()">
     <button class="btn-sm" onclick="runAnalysis()">Go</button>
@@ -90,17 +85,11 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="pmh-row">
     <div class="pmh-box">
       <div class="pmh-label">PMH (manual)</div>
-    <input class="pmh-input" id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20" onchange="pmhValues[activeTicker]=this.value">
-
-
+      <input class="pmh-input" id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20" onchange="pmhValues[activeTicker]=this.value">
     </div>
     <div class="pmh-box">
       <div class="pmh-label">PML (manual)</div>
-
-     <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" onchange="pmlValues[activeTicker]=this.value">
-
-
-    
+      <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" onchange="pmlValues[activeTicker]=this.value">
     </div>
   </div>
   <div class="pmh-row" style="margin-top:4px;">
@@ -140,7 +129,6 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 var PROXY = 'https://uw-proxy-837b.onrender.com/proxy';
 var activeTicker = 'SPY';
 
-
 var pmhValues = { SPY: '', QQQ: '', IWM: '' };
 var pmlValues = { SPY: '', QQQ: '', IWM: '' };
 
@@ -165,20 +153,15 @@ function sendPushover(title, message) {
   });
 }
 
-
 function selectTicker(t) {
   pmhValues[activeTicker] = document.getElementById('manualPMH').value;
   pmlValues[activeTicker] = document.getElementById('manualPML').value;
   activeTicker = t;
-
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
   document.getElementById('tab-'+t).classList.add('active');
-  document.getElementById('customTicker').value = '';document.getElementById('manualPMH').value = pmhValues[t] || '';
+  document.getElementById('customTicker').value = '';
   document.getElementById('manualPMH').value = pmhValues[t] || '';
-document.getElementById('manualPML').value = pmlValues[t] || '';
-
-
-
+  document.getElementById('manualPML').value = pmlValues[t] || '';
 }
 
 function getTicker() {
@@ -259,10 +242,8 @@ function runAnalysis() {
       uw('/api/market/market-tide'),
       uw('/api/stock/'+sym+'/spot-exposures/strike'),
       uw('/api/news/headlines?limit=5'),
-  uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
-uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50')
-
-
+      uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
+      uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50')
     ]);
   })
   .then(function(results){
@@ -289,20 +270,17 @@ uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50')
     var ema8=calcEMA(closes,8);
 
     var vwap=0;
-if(regCandles.length>0){
-  var totalTPV=0,totalVol=0,validCount=0;
-  regCandles.forEach(function(c) {
-    var h=parseFloat(c.high), l=parseFloat(c.low), cl=parseFloat(c.close), vol=parseFloat(c.volume||0);
-    if(isNaN(h)||isNaN(l)||isNaN(cl)) return;
-    var tp=(h+l+cl)/3;
-    if(vol>0 && vol<1e9){
-      totalTPV+=tp*vol; totalVol+=vol;
+    if(regCandles.length>0){
+      var totalTPV=0,totalVol=0,validCount=0;
+      regCandles.forEach(function(c) {
+        var h=parseFloat(c.high), l=parseFloat(c.low), cl=parseFloat(c.close), vol=parseFloat(c.volume||0);
+        if(isNaN(h)||isNaN(l)||isNaN(cl)) return;
+        var tp=(h+l+cl)/3;
+        if(vol>0 && vol<1e9){ totalTPV+=tp*vol; totalVol+=vol; }
+        validCount++;
+      });
+      vwap = totalVol>0 ? totalTPV/totalVol : (validCount>0 ? price : 0);
     }
-    validCount++;
-  });
-  vwap = totalVol>0 ? totalTPV/totalVol : (validCount>0 ? price : 0);
-}
-
 
     var callPrem=0,putPrem=0;
     flowData.forEach(function(f){
@@ -366,9 +344,9 @@ if(regCandles.length>0){
     }
 
     document.getElementById('ellisSection').innerHTML=
-      '<div class="section"><div class="sec-title">Ellis Criteria (10m Chart)</div>'
+      '<div class="section"><div class="sec-title">Ellis Criteria ('+activeTimeframe+' Chart)</div>'
       +'<div class="row"><span style="font-size:16px">'+chk(abovePMH)+'</span><div style="flex:1"><div class="row-label">Above PMH</div><div class="row-sub">Break pre-market high</div></div><span class="row-val '+cl(abovePMH)+'">'+pf(pmh)+'</span></div>'
-      +'<div class="row"><span style="font-size:16px">'+chk(aboveEMA)+'</span><div style="flex:1"><div class="row-label">Above 8 EMA (10m)</div><div class="row-sub">Hold while above</div></div><span class="row-val '+cl(aboveEMA)+'">'+(ema8?'$'+ema8.toFixed(2):'—')+'</span></div>'
+      +'<div class="row"><span style="font-size:16px">'+chk(aboveEMA)+'</span><div style="flex:1"><div class="row-label">Above 8 EMA ('+activeTimeframe+')</div><div class="row-sub">Hold while above</div></div><span class="row-val '+cl(aboveEMA)+'">'+(ema8?'$'+ema8.toFixed(2):'—')+'</span></div>'
       +'<div class="row"><span style="font-size:16px">'+chk(aboveVWAP)+'</span><div style="flex:1"><div class="row-label">Above VWAP</div><div class="row-sub">Institutional benchmark</div></div><span class="row-val '+cl(aboveVWAP)+'">'+pf(vwap)+'</span></div>'
       +'</div>';
 
@@ -423,13 +401,12 @@ if(regCandles.length>0){
 
     document.getElementById('updatedTime').textContent='Updated: '+new Date().toLocaleTimeString();
     if(verdict !== lastVerdict && lastVerdict !== '') {
-  if(verdict === 'CALLS') sendPushover('🟢 CALLS — '+sym, 'Above PMH+EMA+VWAP. Price: $'+price.toFixed(2));
-  if(verdict === 'PUTS') sendPushover('🔴 PUTS — '+sym, 'Below PML+EMA+VWAP. Price: $'+price.toFixed(2));
-  if(milestone) sendPushover('⚠️ EXIT ALERT — '+sym, milestone.msg+' Price: $'+price.toFixed(2));
-}
-lastVerdict = verdict;
-startAutoRefresh();
-
+      if(verdict === 'CALLS') sendPushover('🟢 CALLS — '+sym, 'Above PMH+EMA+VWAP. Price: $'+price.toFixed(2));
+      if(verdict === 'PUTS') sendPushover('🔴 PUTS — '+sym, 'Below PML+EMA+VWAP. Price: $'+price.toFixed(2));
+      if(milestone) sendPushover('⚠️ EXIT ALERT — '+sym, milestone.msg+' Price: $'+price.toFixed(2));
+    }
+    lastVerdict = verdict;
+    startAutoRefresh();
   })
   .catch(function(err){
     setVerdict('v-error','⚠️ ERROR');
