@@ -166,14 +166,17 @@ function sendPushover(title, message) {
 
 
 function selectTicker(t) {
+  pmhValues[activeTicker] = document.getElementById('manualPMH').value;
+  pmlValues[activeTicker] = document.getElementById('manualPML').value;
   activeTicker = t;
+
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
   document.getElementById('tab-'+t).classList.add('active');
   document.getElementById('customTicker').value = '';document.getElementById('manualPMH').value = pmhValues[t] || '';
   document.getElementById('manualPMH').value = pmhValues[t] || '';
 document.getElementById('manualPML').value = pmlValues[t] || '';
 
-document.getElementById('manualPML').value = pmlValues[t] || '';
+
 
 }
 
