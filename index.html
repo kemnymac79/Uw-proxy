@@ -120,6 +120,10 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
     <div class="refresh-status" id="refreshStatus">Auto-refresh: OFF</div>
     <div class="updated" id="updatedTime"></div>
   </div>
+  <div class="refresh-bar" style="margin-top:6px;">
+    <div class="refresh-status" id="watcherStatus" style="color:#888;">🔭 Background watcher: OFF</div>
+    <button id="testPushBtn" onclick="testPushover()" style="background:#1a1a2e;border:1px solid #333;border-radius:7px;padding:5px 10px;color:#fff;font-size:11px;">Test Pushover</button>
+  </div>
 </div>
 <div class="content">
   <div class="verdict v-ready" id="verdictBox">📊 Hit Analyze</div>
@@ -156,11 +160,91 @@ var PUSHOVER_TOKEN = 'a6xvwbphhv423o7zys4utpe3ufir59';
 var PUSHOVER_USER = 'uiizv95oa8xzzec3eyyns3psz67fb1';
 
 function sendPushover(title, message) {
-  fetch('https://api.pushover.net/1/messages.json', {
+  return fetch('https://api.pushover.net/1/messages.json', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: 'token='+PUSHOVER_TOKEN+'&user='+PUSHOVER_USER+'&title='+encodeURIComponent(title)+'&message='+encodeURIComponent(message)+'&priority=1'
+  }).then(function(r){ if(!r.ok) throw new Error('Pushover '+r.status); return r; });
+}
+
+function testPushover() {
+  var btn = document.getElementById('testPushBtn');
+  btn.textContent='Sending...';
+  sendPushover('🔔 Test Alert', 'Pushover is connected and working. Sent '+new Date().toLocaleTimeString())
+    .then(function(){ btn.textContent='✅ Sent!'; setTimeout(function(){ btn.textContent='Test Pushover'; },2500); })
+    .catch(function(){ btn.textContent='❌ Failed'; setTimeout(function(){ btn.textContent='Test Pushover'; },2500); });
+}
+
+// ---- Background watcher: monitors SPY/QQQ/IWM independently of whichever tab is open ----
+var watcherInterval = null;
+var watcherLastVerdict = { SPY:'', QQQ:'', IWM:'' }; // per-ticker, so each ticker's FIRST verdict of the day still fires
+
+function watcherCheckTicker(sym) {
+  var pmh = parseFloat(pmhValues[sym]);
+  var pml = parseFloat(pmlValues[sym]);
+  return uw('/api/option-trades/flow-alerts?ticker_symbol='+sym+'&limit=5').then(function(flowRes){
+    var flowData = flowRes.data||[];
+    var price = parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
+    if(!price) return;
+    return uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50').then(function(regOhlc){
+      var regCandles=(regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
+      regCandles.sort(function(a,b){return new Date(a.start_time)-new Date(b.start_time);});
+      var closes=regCandles.map(function(c){return parseFloat(c.close);});
+      var ema8=calcEMA(closes,8);
+
+      var vwap=0;
+      if(regCandles.length>0){
+        var totalTPV=0,totalVol=0;
+        regCandles.forEach(function(c){
+          var h=parseFloat(c.high),l=parseFloat(c.low),cl=parseFloat(c.close),vol=parseFloat(c.volume||0);
+          if(isNaN(h)||isNaN(l)||isNaN(cl)) return;
+          var tp=(h+l+cl)/3;
+          if(vol>0&&vol<1e9){ totalTPV+=tp*vol; totalVol+=vol; }
+        });
+        vwap = totalVol>0 ? totalTPV/totalVol : price;
+      }
+
+      var abovePMH = pmh>0 ? price>pmh : null;
+      var belowPML = pml>0 ? price<pml : null;
+      var aboveEMA = ema8 ? price>ema8 : null;
+      var aboveVWAP = vwap>0 ? price>vwap : null;
+
+      var verdict='NO TRADE';
+      if(abovePMH&&aboveEMA&&aboveVWAP) verdict='CALLS';
+      else if(belowPML&&aboveEMA===false&&aboveVWAP===false) verdict='PUTS';
+
+      if(verdict!==watcherLastVerdict[sym] && (verdict==='CALLS'||verdict==='PUTS')){
+        sendPushover(
+          (verdict==='CALLS'?'🟢 CALLS':'🔴 PUTS')+' — '+sym,
+          'All 3 confirmations aligned. Price: $'+price.toFixed(2)
+        );
+      }
+      watcherLastVerdict[sym]=verdict;
+    });
+  }).catch(function(err){ console.log('Watcher error '+sym, err); });
+}
+
+function watcherTick() {
+  ['SPY','QQQ','IWM'].forEach(function(sym){
+    if(parseFloat(pmhValues[sym])>0 || parseFloat(pmlValues[sym])>0){
+      watcherCheckTicker(sym);
+    }
   });
+}
+
+function startWatcher() {
+  if(watcherInterval) clearInterval(watcherInterval);
+  watcherTick();
+  watcherInterval = setInterval(watcherTick, 60000);
+  document.getElementById('watcherStatus').textContent='🔭 Background watcher: ON (SPY/QQQ/IWM, 60s)';
+  document.getElementById('watcherStatus').style.color='#00ff88';
+}
+
+function stopWatcher() {
+  if(watcherInterval) clearInterval(watcherInterval);
+  watcherInterval=null;
+  document.getElementById('watcherStatus').textContent='🔭 Background watcher: OFF';
+  document.getElementById('watcherStatus').style.color='#888';
 }
 
 function selectTicker(t) {
@@ -244,6 +328,7 @@ function startAutoRefresh() {
   }, 60000);
   document.getElementById('refreshStatus').textContent='🔄 Auto-refresh: ON (60s)';
   document.getElementById('refreshStatus').style.color='#00ff88';
+  if(!watcherInterval) startWatcher();
 }
 
 function runAnalysis() {
@@ -440,12 +525,12 @@ function runAnalysis() {
     }
 
     document.getElementById('updatedTime').textContent='Updated: '+new Date().toLocaleTimeString();
-    if(verdict !== lastVerdict && lastVerdict !== '') {
-      if(verdict === 'CALLS') sendPushover('🟢 CALLS — '+sym, 'Above PMH+EMA+VWAP. Price: $'+price.toFixed(2));
-      if(verdict === 'PUTS') sendPushover('🔴 PUTS — '+sym, 'Below PML+EMA+VWAP. Price: $'+price.toFixed(2));
-      if(milestone) sendPushover('⚠️ EXIT ALERT — '+sym, milestone.msg+' Price: $'+price.toFixed(2));
+    if(milestone && milestone.msg !== lastVerdict) {
+      sendPushover('⚠️ EXIT ALERT — '+sym, milestone.msg+' Price: $'+price.toFixed(2));
+      lastVerdict = milestone.msg;
+    } else if(!milestone) {
+      lastVerdict = '';
     }
-    lastVerdict = verdict;
     startAutoRefresh();
   })
   .catch(function(err){
