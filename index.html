@@ -95,11 +95,11 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="pmh-row" style="margin-top:4px;">
     <div class="pmh-box">
       <div class="pmh-label">My Entry Price</div>
-      <input class="pmh-input" id="entryPrice" type="number" step="0.01" placeholder="e.g. 1.50">
+      <input class="pmh-input" id="entryPrice" type="number" step="0.01" placeholder="e.g. 1.50" onchange="entryValues[activeTicker]=this.value">
     </div>
     <div class="pmh-box">
       <div class="pmh-label">Position</div>
-      <select id="positionType" style="width:100%;background:#0d0d1a;border:1px solid #1a1a2e;border-radius:7px;padding:6px 10px;color:#fff;font-size:13px;outline:none;">
+      <select id="positionType" style="width:100%;background:#0d0d1a;border:1px solid #1a1a2e;border-radius:7px;padding:6px 10px;color:#fff;font-size:13px;outline:none;" onchange="positionValues[activeTicker]=this.value">
         <option value="">None</option>
         <option value="CALLS">CALLS</option>
         <option value="PUTS">PUTS</option>
@@ -109,7 +109,7 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="pmh-row" style="margin-top:4px;">
     <div class="pmh-box">
       <div class="pmh-label">Contract Symbol (optional, OCC format)</div>
-      <input class="pmh-input" id="contractId" type="text" placeholder="e.g. SPY260619C00740000" style="text-transform:uppercase;">
+      <input class="pmh-input" id="contractId" type="text" placeholder="e.g. SPY260619C00740000" style="text-transform:uppercase;" onchange="contractValues[activeTicker]=this.value">
     </div>
     <div class="pmh-box">
       <div class="pmh-label">Live Contract Price</div>
@@ -145,6 +145,9 @@ var activeTicker = 'SPY';
 
 var pmhValues = { SPY: '', QQQ: '', IWM: '' };
 var pmlValues = { SPY: '', QQQ: '', IWM: '' };
+var entryValues = { SPY: '', QQQ: '', IWM: '' };
+var positionValues = { SPY: '', QQQ: '', IWM: '' };
+var contractValues = { SPY: '', QQQ: '', IWM: '' };
 
 var activeTimeframe = '10m';
 
@@ -155,7 +158,6 @@ function selectTimeframe(t) {
 }
 
 var autoRefreshInterval = null;
-var lastVerdict = '';
 var PUSHOVER_TOKEN = 'a6xvwbphhv423o7zys4utpe3ufir59';
 var PUSHOVER_USER = 'uiizv95oa8xzzec3eyyns3psz67fb1';
 
@@ -178,6 +180,36 @@ function testPushover() {
 // ---- Background watcher: monitors SPY/QQQ/IWM independently of whichever tab is open ----
 var watcherInterval = null;
 var watcherLastVerdict = { SPY:'', QQQ:'', IWM:'' }; // per-ticker, so each ticker's FIRST verdict of the day still fires
+var watcherLastMilestone = { SPY:'', QQQ:'', IWM:'' }; // per-ticker, avoids re-firing the same milestone repeatedly
+
+function watcherCheckMilestone(sym, stockPrice) {
+  var entry = parseFloat(entryValues[sym]);
+  var pos = positionValues[sym];
+  if(!entry || !pos) return;
+  var contractSym = (contractValues[sym]||'').trim();
+  getContractLivePrice(contractSym).then(function(contractPrice){
+    var entry_orig = document.getElementById('entryPrice').value;
+    var pos_orig = document.getElementById('positionType').value;
+    // checkMilestones reads from the DOM (visible tab fields), so temporarily swap in this ticker's
+    // stored values if it's not the active tab, then restore afterward — avoids touching visible UI.
+    var isActiveTab = (sym === activeTicker);
+    if(!isActiveTab){
+      document.getElementById('entryPrice').value = entry;
+      document.getElementById('positionType').value = pos;
+    }
+    var milestone = checkMilestones(stockPrice, contractPrice);
+    if(!isActiveTab){
+      document.getElementById('entryPrice').value = entry_orig;
+      document.getElementById('positionType').value = pos_orig;
+    }
+    if(milestone && milestone.msg !== watcherLastMilestone[sym]){
+      sendPushover('⚠️ EXIT ALERT — '+sym, milestone.msg+' Price: $'+stockPrice.toFixed(2));
+      watcherLastMilestone[sym] = milestone.msg;
+    } else if(!milestone){
+      watcherLastMilestone[sym] = '';
+    }
+  });
+}
 
 function watcherCheckTicker(sym) {
   var pmh = parseFloat(pmhValues[sym]);
@@ -220,13 +252,16 @@ function watcherCheckTicker(sym) {
         );
       }
       watcherLastVerdict[sym]=verdict;
+      watcherCheckMilestone(sym, price);
     });
   }).catch(function(err){ console.log('Watcher error '+sym, err); });
 }
 
 function watcherTick() {
   ['SPY','QQQ','IWM'].forEach(function(sym){
-    if(parseFloat(pmhValues[sym])>0 || parseFloat(pmlValues[sym])>0){
+    var hasLevel = parseFloat(pmhValues[sym])>0 || parseFloat(pmlValues[sym])>0;
+    var hasPosition = positionValues[sym] && parseFloat(entryValues[sym])>0;
+    if(hasLevel || hasPosition){
       watcherCheckTicker(sym);
     }
   });
@@ -250,12 +285,20 @@ function stopWatcher() {
 function selectTicker(t) {
   pmhValues[activeTicker] = document.getElementById('manualPMH').value;
   pmlValues[activeTicker] = document.getElementById('manualPML').value;
+  entryValues[activeTicker] = document.getElementById('entryPrice').value;
+  positionValues[activeTicker] = document.getElementById('positionType').value;
+  contractValues[activeTicker] = document.getElementById('contractId').value;
   activeTicker = t;
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
   document.getElementById('tab-'+t).classList.add('active');
   document.getElementById('customTicker').value = '';
   document.getElementById('manualPMH').value = pmhValues[t] || '';
   document.getElementById('manualPML').value = pmlValues[t] || '';
+  document.getElementById('entryPrice').value = entryValues[t] || '';
+  document.getElementById('positionType').value = positionValues[t] || '';
+  document.getElementById('contractId').value = contractValues[t] || '';
+  document.getElementById('contractLivePrice').textContent = '—';
+  document.getElementById('contractLivePrice').style.color = '#888';
 }
 
 function getTicker() {
@@ -525,12 +568,6 @@ function runAnalysis() {
     }
 
     document.getElementById('updatedTime').textContent='Updated: '+new Date().toLocaleTimeString();
-    if(milestone && milestone.msg !== lastVerdict) {
-      sendPushover('⚠️ EXIT ALERT — '+sym, milestone.msg+' Price: $'+price.toFixed(2));
-      lastVerdict = milestone.msg;
-    } else if(!milestone) {
-      lastVerdict = '';
-    }
     startAutoRefresh();
   })
   .catch(function(err){
