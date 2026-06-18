@@ -106,6 +106,16 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
       </select>
     </div>
   </div>
+  <div class="pmh-row" style="margin-top:4px;">
+    <div class="pmh-box">
+      <div class="pmh-label">Contract Symbol (optional, OCC format)</div>
+      <input class="pmh-input" id="contractId" type="text" placeholder="e.g. SPY260619C00740000" style="text-transform:uppercase;">
+    </div>
+    <div class="pmh-box">
+      <div class="pmh-label">Live Contract Price</div>
+      <div class="pmh-input" id="contractLivePrice" style="display:flex;align-items:center;color:#888;">—</div>
+    </div>
+  </div>
   <div class="refresh-bar">
     <div class="refresh-status" id="refreshStatus">Auto-refresh: OFF</div>
     <div class="updated" id="updatedTime"></div>
@@ -199,18 +209,32 @@ function chk(v){ return v===true?'✅':v===false?'❌':'⏳'; }
 function cl(v){ return v===true?'green':v===false?'red':'gray'; }
 function pf(v){ return v>0?'$'+parseFloat(v).toFixed(2):'—'; }
 
-function checkMilestones(price) {
+function checkMilestones(stockPrice, contractPrice) {
   var entry = parseFloat(document.getElementById('entryPrice').value);
   var pos = document.getElementById('positionType').value;
   if(!entry||!pos) return null;
-  var pct = pos==='CALLS'
-    ? ((price-entry)/entry)*100
-    : ((entry-price)/entry)*100;
-  if(pct<=-30) return { msg:'🛑 STOP LOSS — EXIT NOW (-30%)', cls:'v-exit' };
-  if(pct>=100) return { msg:'🚨 +100% — SELL 1, RUNNER IS FREE', cls:'v-exit' };
-  if(pct>=50)  return { msg:'⚡ +50% — SCALE OUT, SELL 1', cls:'v-exit' };
-  if(pct>=30)  return { msg:'✅ +30% MILESTONE HIT', cls:'v-calls' };
+  // Prefer real contract price when available; fall back to stock-price proxy
+  var usingReal = contractPrice!=null && !isNaN(contractPrice) && contractPrice>0;
+  var refPrice = usingReal ? contractPrice : stockPrice;
+  var pct = usingReal
+    ? ((refPrice-entry)/entry)*100
+    : (pos==='CALLS' ? ((stockPrice-entry)/entry)*100 : ((entry-stockPrice)/entry)*100);
+  var src = usingReal ? '' : ' (est. from stock price)';
+  if(pct<=-30) return { msg:'🛑 STOP LOSS — EXIT NOW (-30%)'+src, cls:'v-exit' };
+  if(pct>=100) return { msg:'🚨 +100% — SELL 1, RUNNER IS FREE'+src, cls:'v-exit' };
+  if(pct>=50)  return { msg:'⚡ +50% — SCALE OUT, SELL 1'+src, cls:'v-exit' };
+  if(pct>=30)  return { msg:'✅ +30% MILESTONE HIT'+src, cls:'v-calls' };
   return null;
+}
+
+function getContractLivePrice(contractId) {
+  if(!contractId) return Promise.resolve(null);
+  return uw('/api/option-contract/'+contractId+'/intraday').then(function(res){
+    var data = res.data||[];
+    if(!data.length) return null;
+    var last = data[data.length-1];
+    return parseFloat(last.close||last.price||last.last_price||0) || null;
+  }).catch(function(){ return null; });
 }
 
 function startAutoRefresh() {
@@ -237,13 +261,15 @@ function runAnalysis() {
   .then(function(flowRes){
     flowData=flowRes.data||[];
     price=parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
+    var contractId = document.getElementById('contractId').value.trim();
     return Promise.all([
       uw('/api/darkpool/'+sym),
       uw('/api/market/market-tide'),
       uw('/api/stock/'+sym+'/spot-exposures/strike'),
       uw('/api/news/headlines?limit=5'),
       uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
-      uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50')
+      uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50'),
+      getContractLivePrice(contractId)
     ]);
   })
   .then(function(results){
@@ -253,6 +279,7 @@ function runAnalysis() {
     var newsRes=results[3];
     var preOhlc=results[4];
     var regOhlc=results[5];
+    var contractPrice=results[6];
 
     var preCandles=(preOhlc.data||[]).filter(function(c){return c.market_time==='pre';});
     var regCandles=(regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
@@ -326,7 +353,20 @@ function runAnalysis() {
       reason='Above 8 EMA — bullish lean, confirm PMH';
     }
 
-    var milestone=checkMilestones(price);
+    var liveDisplay = document.getElementById('contractLivePrice');
+    var contractIdVal = document.getElementById('contractId').value.trim();
+    if(contractPrice!=null){
+      liveDisplay.textContent = '$'+contractPrice.toFixed(2);
+      liveDisplay.style.color = '#00ff88';
+    } else if(contractIdVal){
+      liveDisplay.textContent = '— (unavailable)';
+      liveDisplay.style.color = '#888';
+    } else {
+      liveDisplay.textContent = '—';
+      liveDisplay.style.color = '#888';
+    }
+
+    var milestone=checkMilestones(price, contractPrice);
     if(milestone){
       setVerdict(milestone.cls, milestone.msg);
       document.getElementById('alertBox').innerHTML=
