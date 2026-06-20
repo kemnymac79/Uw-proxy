@@ -572,19 +572,34 @@ function runAnalysis() {
     var trendDown = (ema8!=null && ema20!=null) ? ema8<ema20 : null;
     var trendCheckForDisplay = belowPML ? trendDown : trendUp; // show whichever direction is relevant to the active setup
 
+    // PATCH 7 — Sentiment gate (Analyze-only, NOT in the Background Watcher/Pushover path).
+    // Requires at least 2 of 3 (Options Flow, Market Tide, Dark Pool) to agree with the verdict
+    // direction before CALLS/PUTS can fire. The watcher doesn't currently pull this data, so
+    // Pushover alerts still fire on the original 4 gates only — this is a stricter check that
+    // only applies when the dashboard is open and Analyze is run by hand.
+    var bullishCount = [flowSentiment,marketTide,darkPoolBias].filter(function(s){return s==='Bullish';}).length;
+    var bearishCount = [flowSentiment,marketTide,darkPoolBias].filter(function(s){return s==='Bearish';}).length;
+    var sentimentConfirmsCalls = bullishCount>=2;
+    var sentimentConfirmsPuts = bearishCount>=2;
+    var sentimentSummaryTxt = 'Flow '+flowSentiment+' / Tide '+marketTide+' / Dark Pool '+darkPoolBias;
+
     var verdict='NO TRADE';
     var reason='Enter PMH/PML above or waiting for level break';
 
-    if(abovePMH&&aboveEMA&&aboveVWAP&&volConfirmed){
+    if(abovePMH&&aboveEMA&&aboveVWAP&&volConfirmed&&sentimentConfirmsCalls){
       verdict='CALLS';
       reason = trendUp===false
-        ? 'Above PMH + 8 EMA + VWAP + Volume ✅ (note: 8 EMA below 20 EMA — against broader trend)'
-        : 'Above PMH + 8 EMA + VWAP + Volume ✅';
-    } else if(belowPML&&aboveEMA===false&&aboveVWAP===false&&volConfirmed){
+        ? 'Above PMH + 8 EMA + VWAP + Volume + Sentiment ✅ (note: 8 EMA below 20 EMA — against broader trend)'
+        : 'Above PMH + 8 EMA + VWAP + Volume + Sentiment ✅';
+    } else if(belowPML&&aboveEMA===false&&aboveVWAP===false&&volConfirmed&&sentimentConfirmsPuts){
       verdict='PUTS';
       reason = trendDown===false
-        ? 'Below PML + 8 EMA + VWAP + Volume ✅ (note: 8 EMA above 20 EMA — against broader trend)'
-        : 'Below PML + 8 EMA + VWAP + Volume ✅';
+        ? 'Below PML + 8 EMA + VWAP + Volume + Sentiment ✅ (note: 8 EMA above 20 EMA — against broader trend)'
+        : 'Below PML + 8 EMA + VWAP + Volume + Sentiment ✅';
+    } else if(abovePMH&&aboveEMA&&aboveVWAP&&volConfirmed&&!sentimentConfirmsCalls){
+      reason='Above PMH + 8 EMA + VWAP + Volume, but sentiment doesn\'t back it up (need 2/3 bullish — '+sentimentSummaryTxt+') — no trade';
+    } else if(belowPML&&aboveEMA===false&&aboveVWAP===false&&volConfirmed&&!sentimentConfirmsPuts){
+      reason='Below PML + 8 EMA + VWAP + Volume, but sentiment doesn\'t back it up (need 2/3 bearish — '+sentimentSummaryTxt+') — no trade';
     } else if(abovePMH&&aboveEMA&&aboveVWAP&&volConfirmed===false){
       reason='Above PMH + 8 EMA + VWAP, but volume is weak ('+volRatioTxt+') — likely fakeout, no trade';
     } else if(belowPML&&aboveEMA===false&&aboveVWAP===false&&volConfirmed===false){
@@ -648,13 +663,14 @@ function runAnalysis() {
       +'</div>';
 
     document.getElementById('confirmSection').innerHTML=
-      '<div class="section"><div class="sec-title">Confirmation</div>'
+      '<div class="section"><div class="sec-title">Confirmation (gate: 2/3 must agree)</div>'
       +'<div class="cards">'
       +'<div class="card"><div class="card-label">Options Flow</div><div class="card-val" style="color:'+sc(flowSentiment)+'">'+flowSentiment+'</div></div>'
       +'<div class="card"><div class="card-label">Market Tide</div><div class="card-val" style="color:'+sc(marketTide)+'">'+marketTide+'</div></div>'
       +'<div class="card"><div class="card-label">Dark Pool</div><div class="card-val" style="color:'+sc(darkPoolBias)+'">'+darkPoolBias+'</div></div>'
       +'</div>'
       +'<div style="color:#555;font-size:12px;margin-top:6px">Net Premium: <span style="color:#fff;font-weight:700">'+(parseFloat(flowNet)>0?'+':'')+'$'+flowNet+'M</span></div>'
+      +'<div style="color:#555;font-size:12px;margin-top:4px">Bullish: '+bullishCount+'/3 '+(sentimentConfirmsCalls?'✅':'')+' · Bearish: '+bearishCount+'/3 '+(sentimentConfirmsPuts?'✅':'')+'</div>'
       +'</div>';
 
     if(flowData.length>0){
