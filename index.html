@@ -358,7 +358,21 @@ function selectTicker(t) {
   document.getElementById('contractId').value = contractValues[t] || '';
   document.getElementById('contractLivePrice').textContent = '—';
   document.getElementById('contractLivePrice').style.color = '#888';
+
+  // PATCH 6 — clear the stale price display immediately (it used to keep showing the previous
+  // tab's price/ticker label until Analyze was hit again, which was misleading — e.g. switching
+  // to IWM still showed "$SPY • Live" with SPY's frozen price). Then auto-trigger Analyze for
+  // this ticker if it has a level entered, so the verdict card always reflects the visible tab
+  // instead of stale data from whichever ticker was last manually analyzed.
+  document.getElementById('priceDisplay').innerHTML = '';
+  setVerdict('v-ready', '📊 Hit Analyze');
+  document.getElementById('verdictReason').textContent = '';
+  var hasLevel = parseFloat(pmhValues[t])>0 || parseFloat(pmlValues[t])>0;
+  if(hasLevel){
+    runAnalysis();
+  }
 }
+
 
 function getTicker() {
   return document.getElementById('customTicker').value.trim().toUpperCase() || activeTicker;
