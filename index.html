@@ -180,7 +180,9 @@ function testPushover() {
 // ---- Background watcher: monitors SPY/QQQ/IWM independently of whichever tab is open ----
 var watcherInterval = null;
 var watcherLastVerdict = { SPY:'', QQQ:'', IWM:'' }; // per-ticker, so each ticker's FIRST verdict of the day still fires
+var watcherLastAlertTime = { SPY:0, QQQ:0, IWM:0 }; // PATCH 1 (v2): timestamp of last fired alert per ticker, for cooldown
 var watcherLastMilestone = { SPY:'', QQQ:'', IWM:'' }; // per-ticker, avoids re-firing the same milestone repeatedly
+var watcherLastEmaExit = { SPY:false, QQQ:false, IWM:false }; // PATCH 3: tracks whether exit alert already fired for current position
 
 function watcherCheckMilestone(sym, stockPrice) {
   var entry = parseFloat(entryValues[sym]);
@@ -211,6 +213,26 @@ function watcherCheckMilestone(sym, stockPrice) {
   });
 }
 
+// PATCH 3 — fires once when price crosses the 8 EMA against an open position (Ellis's own exit rule)
+function watcherCheckEmaExit(sym, stockPrice, ema8) {
+  var pos = positionValues[sym];
+  var entry = parseFloat(entryValues[sym]);
+  if(!pos || !entry || !ema8) {
+    watcherLastEmaExit[sym] = false; // no open position — reset so a future trade starts fresh
+    return;
+  }
+  var broke = (pos === 'CALLS' && stockPrice < ema8) || (pos === 'PUTS' && stockPrice > ema8);
+  if(broke && !watcherLastEmaExit[sym]){
+    sendPushover(
+      '🚪 EXIT SIGNAL — '+sym+' '+pos,
+      '8 EMA broke. Price $'+stockPrice.toFixed(2)+' vs EMA $'+ema8.toFixed(2)
+    );
+    watcherLastEmaExit[sym] = true; // don't re-fire every poll while still broken
+  } else if(!broke){
+    watcherLastEmaExit[sym] = false; // back on the right side of EMA — re-arm for next break
+  }
+}
+
 function watcherCheckTicker(sym) {
   var pmh = parseFloat(pmhValues[sym]);
   var pml = parseFloat(pmlValues[sym]);
@@ -223,6 +245,7 @@ function watcherCheckTicker(sym) {
       regCandles.sort(function(a,b){return new Date(a.start_time)-new Date(b.start_time);});
       var closes=regCandles.map(function(c){return parseFloat(c.close);});
       var ema8=calcEMA(closes,8);
+      var ema20=calcEMA(closes,20);
 
       var vwap=0;
       if(regCandles.length>0){
@@ -240,19 +263,45 @@ function watcherCheckTicker(sym) {
       var belowPML = pml>0 ? price<pml : null;
       var aboveEMA = ema8 ? price>ema8 : null;
       var aboveVWAP = vwap>0 ? price>vwap : null;
+      var volCheck = calcVolumeConfirmation(regCandles);
+      var volConfirmed = volCheck.confirmed;
+      // PATCH 5 (info-only) — 20 EMA trend alignment is tracked here for the Pushover message
+      // context, but does NOT gate verdict. See runAnalysis for the reasoning.
+      var trendUp = (ema8!=null && ema20!=null) ? ema8>ema20 : null;
+      var trendDown = (ema8!=null && ema20!=null) ? ema8<ema20 : null;
 
       var verdict='NO TRADE';
-      if(abovePMH&&aboveEMA&&aboveVWAP) verdict='CALLS';
-      else if(belowPML&&aboveEMA===false&&aboveVWAP===false) verdict='PUTS';
+      if(abovePMH&&aboveEMA&&aboveVWAP&&volConfirmed) verdict='CALLS';
+      else if(belowPML&&aboveEMA===false&&aboveVWAP===false&&volConfirmed) verdict='PUTS';
 
-      if(verdict!==watcherLastVerdict[sym] && (verdict==='CALLS'||verdict==='PUTS')){
-        sendPushover(
-          (verdict==='CALLS'?'🟢 CALLS':'🔴 PUTS')+' — '+sym,
-          'All 3 confirmations aligned. Price: $'+price.toFixed(2)
-        );
+      // PATCH 1 (v2) — fire instantly on the FIRST confirmed signal, no added latency.
+      // 6/18's 5x QQQ spam happened because verdict genuinely dipped to NO TRADE for single
+      // 60s ticks (price briefly slipping below VWAP/EMA on chop) then re-confirmed — each
+      // re-confirm looked "new" to the old dedup logic even though it was the same move.
+      // Fix: once an alert fires for a ticker, require a 10-minute cooldown before that same
+      // ticker can alert again, even if it drops out and re-confirms in between. A real new
+      // setup later in the day will still get through; a single-tick flicker won't.
+      var ALERT_COOLDOWN_MS = 5 * 60 * 1000;
+      if(verdict==='CALLS'||verdict==='PUTS'){
+        var now = Date.now();
+        var cooledDown = (now - watcherLastAlertTime[sym]) > ALERT_COOLDOWN_MS;
+        if(verdict!==watcherLastVerdict[sym] && cooledDown){
+          var trendNote = '';
+          if(verdict==='CALLS' && trendUp===false) trendNote = ' ⚠️ Note: against 20 EMA trend.';
+          if(verdict==='PUTS' && trendDown===false) trendNote = ' ⚠️ Note: against 20 EMA trend.';
+          sendPushover(
+            (verdict==='CALLS'?'🟢 CALLS':'🔴 PUTS')+' — '+sym,
+            'All 3 confirmations aligned. Price: $'+price.toFixed(2)+trendNote
+          );
+          watcherLastAlertTime[sym] = now;
+        }
+        watcherLastVerdict[sym]=verdict;
+      } else {
+        watcherLastVerdict[sym]=verdict; // dropped to NO TRADE
       }
-      watcherLastVerdict[sym]=verdict;
+
       watcherCheckMilestone(sym, price);
+      watcherCheckEmaExit(sym, price, ema8); // PATCH 3
     });
   }).catch(function(err){ console.log('Watcher error '+sym, err); });
 }
@@ -282,12 +331,22 @@ function stopWatcher() {
   document.getElementById('watcherStatus').style.color='#888';
 }
 
+// PATCH 2 — PMH/PML sanity check (catches the SPY/QQQ cross-tab typo from 6/19)
+function checkPMHPML(sym) {
+  var pmh = parseFloat(pmhValues[sym]);
+  var pml = parseFloat(pmlValues[sym]);
+  if(!isNaN(pmh) && !isNaN(pml) && pmh>0 && pml>0 && pml >= pmh){
+    alert('⚠️ '+sym+': PML ($'+pml.toFixed(2)+') is not below PMH ($'+pmh.toFixed(2)+'). Double-check these — possible typo or cross-tab mix-up.');
+  }
+}
+
 function selectTicker(t) {
   pmhValues[activeTicker] = document.getElementById('manualPMH').value;
   pmlValues[activeTicker] = document.getElementById('manualPML').value;
   entryValues[activeTicker] = document.getElementById('entryPrice').value;
   positionValues[activeTicker] = document.getElementById('positionType').value;
   contractValues[activeTicker] = document.getElementById('contractId').value;
+  checkPMHPML(activeTicker); // PATCH 2
   activeTicker = t;
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
   document.getElementById('tab-'+t).classList.add('active');
@@ -318,6 +377,22 @@ function calcEMA(arr, period) {
   var ema=arr.slice(0,period).reduce(function(a,b){return a+b;},0)/period;
   for(var i=period;i<arr.length;i++) ema=arr[i]*k+ema*(1-k);
   return ema;
+}
+
+// PATCH 4 — Volume confirmation. Compares the most recent candle's volume against the average
+// volume of the prior candles. A breakout on weak volume is a classic fakeout trap — this
+// requires real participation behind the move before the verdict can fire CALLS/PUTS.
+var VOLUME_THRESHOLD_MULTIPLIER = 1.5;
+function calcVolumeConfirmation(candles) {
+  if(!candles || candles.length < 6) return { confirmed: null, ratio: null }; // not enough data yet
+  var vols = candles.map(function(c){ return parseFloat(c.volume||0); }).filter(function(v){ return v>0 && v<1e9; });
+  if(vols.length < 6) return { confirmed: null, ratio: null };
+  var lastVol = vols[vols.length-1];
+  var priorVols = vols.slice(0, -1);
+  var avgVol = priorVols.reduce(function(a,b){ return a+b; }, 0) / priorVols.length;
+  if(avgVol<=0) return { confirmed: null, ratio: null };
+  var ratio = lastVol / avgVol;
+  return { confirmed: ratio >= VOLUME_THRESHOLD_MULTIPLIER, ratio: ratio };
 }
 
 function setVerdict(cls,txt) {
@@ -421,8 +496,15 @@ function runAnalysis() {
     if(!isNaN(manualPMH)&&manualPMH>0) pmh=manualPMH;
     if(!isNaN(manualPML)&&manualPML>0) pml=manualPML;
 
+    // PATCH 2 — visible sanity check in the dashboard itself when Analyze runs
+    if(pmh>0 && pml>0 && pml>=pmh){
+      document.getElementById('errorBox').innerHTML =
+        '<div class="error-box"><strong>⚠️ Level check:</strong> PML ($'+pml.toFixed(2)+') is not below PMH ($'+pmh.toFixed(2)+') for '+sym+'. Verify these before trusting the verdict.</div>';
+    }
+
     var closes=regCandles.map(function(c){return parseFloat(c.close);});
     var ema8=calcEMA(closes,8);
+    var ema20=calcEMA(closes,20);
 
     var vwap=0;
     if(regCandles.length>0){
@@ -465,14 +547,34 @@ function runAnalysis() {
     var belowPML=pml>0?price<pml:null;
     var aboveEMA=ema8?price>ema8:null;
     var aboveVWAP=vwap>0?price>vwap:null;
+    var volCheck=calcVolumeConfirmation(regCandles);
+    var volConfirmed=volCheck.confirmed;
+    var volRatioTxt = volCheck.ratio!=null ? volCheck.ratio.toFixed(2)+'x avg' : '—';
+    // PATCH 5 (info-only) — 20 EMA trend alignment is computed and shown, but does NOT gate the
+    // verdict yet. Kenny's 6/18 results (3-for-3, no losers) came from a choppy day using only
+    // PMH/8EMA/VWAP — exactly the day type this filter would suppress signals on. Tracking it
+    // alongside real trades first, before deciding whether it should become a hard gate.
+    var trendUp = (ema8!=null && ema20!=null) ? ema8>ema20 : null;
+    var trendDown = (ema8!=null && ema20!=null) ? ema8<ema20 : null;
+    var trendCheckForDisplay = belowPML ? trendDown : trendUp; // show whichever direction is relevant to the active setup
 
     var verdict='NO TRADE';
     var reason='Enter PMH/PML above or waiting for level break';
 
-    if(abovePMH&&aboveEMA&&aboveVWAP){
-      verdict='CALLS'; reason='Above PMH + 8 EMA + VWAP ✅';
-    } else if(belowPML&&aboveEMA===false&&aboveVWAP===false){
-      verdict='PUTS'; reason='Below PML + 8 EMA + VWAP ✅';
+    if(abovePMH&&aboveEMA&&aboveVWAP&&volConfirmed){
+      verdict='CALLS';
+      reason = trendUp===false
+        ? 'Above PMH + 8 EMA + VWAP + Volume ✅ (note: 8 EMA below 20 EMA — against broader trend)'
+        : 'Above PMH + 8 EMA + VWAP + Volume ✅';
+    } else if(belowPML&&aboveEMA===false&&aboveVWAP===false&&volConfirmed){
+      verdict='PUTS';
+      reason = trendDown===false
+        ? 'Below PML + 8 EMA + VWAP + Volume ✅ (note: 8 EMA above 20 EMA — against broader trend)'
+        : 'Below PML + 8 EMA + VWAP + Volume ✅';
+    } else if(abovePMH&&aboveEMA&&aboveVWAP&&volConfirmed===false){
+      reason='Above PMH + 8 EMA + VWAP, but volume is weak ('+volRatioTxt+') — likely fakeout, no trade';
+    } else if(belowPML&&aboveEMA===false&&aboveVWAP===false&&volConfirmed===false){
+      reason='Below PML + 8 EMA + VWAP, but volume is weak ('+volRatioTxt+') — likely fakeout, no trade';
     } else if(pmh>0&&pml>0){
       reason='Between PMH/PML — Do NOT Diddle in the Middle';
     } else if(ema8&&price<ema8){
@@ -516,6 +618,8 @@ function runAnalysis() {
       +'<div class="row"><span style="font-size:16px">'+chk(abovePMH)+'</span><div style="flex:1"><div class="row-label">Above PMH</div><div class="row-sub">Break pre-market high</div></div><span class="row-val '+cl(abovePMH)+'">'+pf(pmh)+'</span></div>'
       +'<div class="row"><span style="font-size:16px">'+chk(aboveEMA)+'</span><div style="flex:1"><div class="row-label">Above 8 EMA ('+activeTimeframe+')</div><div class="row-sub">Hold while above</div></div><span class="row-val '+cl(aboveEMA)+'">'+(ema8?'$'+ema8.toFixed(2):'—')+'</span></div>'
       +'<div class="row"><span style="font-size:16px">'+chk(aboveVWAP)+'</span><div style="flex:1"><div class="row-label">Above VWAP</div><div class="row-sub">Institutional benchmark</div></div><span class="row-val '+cl(aboveVWAP)+'">'+pf(vwap)+'</span></div>'
+      +'<div class="row"><span style="font-size:16px">'+chk(volConfirmed)+'</span><div style="flex:1"><div class="row-label">Volume Confirmation</div><div class="row-sub">'+VOLUME_THRESHOLD_MULTIPLIER+'x avg required</div></div><span class="row-val '+cl(volConfirmed)+'">'+volRatioTxt+'</span></div>'
+      +'<div class="row"><span style="font-size:16px">'+chk(trendCheckForDisplay)+'</span><div style="flex:1"><div class="row-label">8/20 EMA Trend Align</div><div class="row-sub">Short-term agrees with medium-term</div></div><span class="row-val '+cl(trendCheckForDisplay)+'">'+(ema20?'$'+ema20.toFixed(2):'—')+'</span></div>'
       +'</div>';
 
     document.getElementById('levelsSection').innerHTML=
