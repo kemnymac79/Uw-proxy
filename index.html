@@ -85,21 +85,21 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="pmh-row">
     <div class="pmh-box">
       <div class="pmh-label">PMH (manual)</div>
-      <input class="pmh-input" id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20" onchange="pmhValues[activeTicker]=this.value">
+      <input class="pmh-input" id="manualPMH" type="number" step="0.01" placeholder="e.g. 755.20" onchange="pmhValues[activeTicker]=this.value;saveTickerValues();">
     </div>
     <div class="pmh-box">
       <div class="pmh-label">PML (manual)</div>
-      <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" onchange="pmlValues[activeTicker]=this.value">
+      <input class="pmh-input" id="manualPML" type="number" step="0.01" placeholder="e.g. 750.10" onchange="pmlValues[activeTicker]=this.value;saveTickerValues();">
     </div>
   </div>
   <div class="pmh-row" style="margin-top:4px;">
     <div class="pmh-box">
       <div class="pmh-label">My Entry Price</div>
-      <input class="pmh-input" id="entryPrice" type="number" step="0.01" placeholder="e.g. 1.50" onchange="entryValues[activeTicker]=this.value">
+      <input class="pmh-input" id="entryPrice" type="number" step="0.01" placeholder="e.g. 1.50" onchange="entryValues[activeTicker]=this.value;saveTickerValues();">
     </div>
     <div class="pmh-box">
       <div class="pmh-label">Position</div>
-      <select id="positionType" style="width:100%;background:#0d0d1a;border:1px solid #1a1a2e;border-radius:7px;padding:6px 10px;color:#fff;font-size:13px;outline:none;" onchange="positionValues[activeTicker]=this.value">
+      <select id="positionType" style="width:100%;background:#0d0d1a;border:1px solid #1a1a2e;border-radius:7px;padding:6px 10px;color:#fff;font-size:13px;outline:none;" onchange="positionValues[activeTicker]=this.value;saveTickerValues();">
         <option value="">None</option>
         <option value="CALLS">CALLS</option>
         <option value="PUTS">PUTS</option>
@@ -109,7 +109,7 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
   <div class="pmh-row" style="margin-top:4px;">
     <div class="pmh-box">
       <div class="pmh-label">Contract Symbol (optional, OCC format)</div>
-      <input class="pmh-input" id="contractId" type="text" placeholder="e.g. SPY260619C00740000" style="text-transform:uppercase;" onchange="contractValues[activeTicker]=this.value">
+      <input class="pmh-input" id="contractId" type="text" placeholder="e.g. SPY260619C00740000" style="text-transform:uppercase;" onchange="contractValues[activeTicker]=this.value;saveTickerValues();">
     </div>
     <div class="pmh-box">
       <div class="pmh-label">Live Contract Price</div>
@@ -143,11 +143,58 @@ body { background: #050510; color: #fff; font-family: -apple-system, sans-serif;
 var PROXY = 'https://uw-proxy-837b.onrender.com/proxy';
 var activeTicker = 'SPY';
 
+// PATCH 11 — persistence. pmhValues/pmlValues/etc were plain in-memory JS variables, wiped
+// every time the page reloaded — including the repeated private-tab/PWA switching today while
+// debugging the price-staleness issue. The Background Watcher needs PMH/PML to check a ticker
+// at all (see watcherTick's hasLevel check), so losing these silently meant the watcher had
+// nothing to monitor until levels were re-entered. Fix: persist to localStorage on every change,
+// reload from it on page start.
+var STORAGE_KEY = 'ellisDashboard_v1';
+
+function saveTickerValues() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      pmhValues: pmhValues,
+      pmlValues: pmlValues,
+      entryValues: entryValues,
+      positionValues: positionValues,
+      contractValues: contractValues
+    }));
+  } catch(e){ console.log('localStorage save failed', e); }
+}
+
+function loadTickerValues() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    var saved = JSON.parse(raw);
+    ['SPY','QQQ','IWM'].forEach(function(t){
+      if(saved.pmhValues && saved.pmhValues[t]!=null) pmhValues[t] = saved.pmhValues[t];
+      if(saved.pmlValues && saved.pmlValues[t]!=null) pmlValues[t] = saved.pmlValues[t];
+      if(saved.entryValues && saved.entryValues[t]!=null) entryValues[t] = saved.entryValues[t];
+      if(saved.positionValues && saved.positionValues[t]!=null) positionValues[t] = saved.positionValues[t];
+      if(saved.contractValues && saved.contractValues[t]!=null) contractValues[t] = saved.contractValues[t];
+    });
+  } catch(e){ console.log('localStorage load failed', e); }
+}
+
 var pmhValues = { SPY: '', QQQ: '', IWM: '' };
 var pmlValues = { SPY: '', QQQ: '', IWM: '' };
 var entryValues = { SPY: '', QQQ: '', IWM: '' };
 var positionValues = { SPY: '', QQQ: '', IWM: '' };
 var contractValues = { SPY: '', QQQ: '', IWM: '' };
+loadTickerValues(); // restore whatever was saved before this page load
+
+// PATCH 11 — populate the visible input fields for the default active tab (SPY) with whatever
+// was restored from storage. Without this, the JS objects would have the right values but the
+// on-screen boxes would still show blank until you manually switched tabs and back.
+(function initRestoredFields(){
+  document.getElementById('manualPMH').value = pmhValues[activeTicker] || '';
+  document.getElementById('manualPML').value = pmlValues[activeTicker] || '';
+  document.getElementById('entryPrice').value = entryValues[activeTicker] || '';
+  document.getElementById('positionType').value = positionValues[activeTicker] || '';
+  document.getElementById('contractId').value = contractValues[activeTicker] || '';
+})();
 
 var activeTimeframe = '10m';
 
@@ -453,6 +500,7 @@ function selectTicker(t) {
   entryValues[activeTicker] = document.getElementById('entryPrice').value;
   positionValues[activeTicker] = document.getElementById('positionType').value;
   contractValues[activeTicker] = document.getElementById('contractId').value;
+  saveTickerValues(); // PATCH 11 — persist before switching tabs
   checkPMHPML(activeTicker); // PATCH 2
   activeTicker = t;
   document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
