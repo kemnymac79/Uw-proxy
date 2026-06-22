@@ -569,7 +569,23 @@ function runAnalysis() {
   var flowData=[];
   var price=0;
 
-  uw('/api/option-trades/flow-alerts?ticker_symbol='+sym+'&limit=10')
+  // PATCH 9c — the flow-alerts call below supplies `price`, which everything downstream needs,
+  // so it isn't a candidate for allSettled-style "fall back to empty" — without price there's
+  // nothing to show. Instead: retry once automatically on failure before giving up. This was the
+  // actual source of the recurring "Error: Load failed" screens (this call sits BEFORE the
+  // allSettled block added below, so that fix didn't cover it).
+  function fetchFlowWithRetry(retried){
+    return uw('/api/option-trades/flow-alerts?ticker_symbol='+sym+'&limit=10').catch(function(err){
+      if(!retried){
+        return new Promise(function(resolve){ setTimeout(resolve, 800); }).then(function(){
+          return fetchFlowWithRetry(true);
+        });
+      }
+      throw err; // already retried once — let it fail for real
+    });
+  }
+
+  fetchFlowWithRetry(false)
   .then(function(flowRes){
     flowData=flowRes.data||[];
     price=parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
@@ -840,7 +856,7 @@ function runAnalysis() {
   .catch(function(err){
     setVerdict('v-error','⚠️ ERROR');
     document.getElementById('errorBox').innerHTML=
-      '<div class="error-box"><strong>Error:</strong> '+err.message+'</div>';
+      '<div class="error-box"><strong>Error (retried once, still failed):</strong> '+err.message+'. Try Analyze again — proxy/API may be briefly overloaded.</div>';
   })
   .finally(function(){
     btn.disabled=false;
