@@ -239,10 +239,16 @@ function watcherCheckTicker(sym) {
   return uw('/api/option-trades/flow-alerts?ticker_symbol='+sym+'&limit=5').then(function(flowRes){
     var flowData = flowRes.data||[];
     var price = parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
-    if(!price) return;
     return uw('/api/stock/'+sym+'/ohlc/'+(activeTimeframe==='30m'?'30m':'1m')+'?limit=50').then(function(regOhlc){
       var regCandles=(regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
       regCandles.sort(function(a,b){return new Date(a.start_time)-new Date(b.start_time);});
+      // PATCH 10 — same price-freshness fix as runAnalysis: prefer the latest OHLC candle close
+      // over flow-alerts' underlying_price, which can go stale on lower options-volume tickers.
+      if(regCandles.length>0){
+        var lastCandleClose = parseFloat(regCandles[regCandles.length-1].close);
+        if(!isNaN(lastCandleClose) && lastCandleClose>0) price = lastCandleClose;
+      }
+      if(!price) return; // still no usable price from either source — skip this cycle
       var closes=regCandles.map(function(c){return parseFloat(c.close);});
       var ema8=calcEMA(closes,8);
       var ema20=calcEMA(closes,20);
@@ -361,7 +367,6 @@ function scannerCheckTicker(sym) {
   return uw('/api/option-trades/flow-alerts?ticker_symbol='+sym+'&limit=5').then(function(flowRes){
     var flowData = flowRes.data||[];
     var price = parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
-    if(!price) return;
     return Promise.all([
       uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
       uw('/api/stock/'+sym+'/ohlc/1m?limit=50')
@@ -371,6 +376,13 @@ function scannerCheckTicker(sym) {
       var preCandles = (preOhlc.data||[]).filter(function(c){return c.market_time==='pre';});
       var regCandles = (regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
       regCandles.sort(function(a,b){return new Date(a.start_time)-new Date(b.start_time);});
+
+      // PATCH 10 — same price-freshness fix: prefer latest OHLC close over flow-alerts' price
+      if(regCandles.length>0){
+        var lastCandleClose = parseFloat(regCandles[regCandles.length-1].close);
+        if(!isNaN(lastCandleClose) && lastCandleClose>0) price = lastCandleClose;
+      }
+      if(!price) return; // no usable price from either source
 
       // Auto-detected PMH/PML — no manual override available for scanner tickers
       var pmh = preCandles.length>0 ? Math.max.apply(null, preCandles.map(function(c){return parseFloat(c.high);})) : 0;
@@ -637,6 +649,18 @@ function runAnalysis() {
     var preCandles=(preOhlc.data||[]).filter(function(c){return c.market_time==='pre';});
     var regCandles=(regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
     regCandles.sort(function(a,b){return new Date(a.start_time)-new Date(b.start_time);});
+
+    // PATCH 10 — price freshness fix. flow-alerts' underlying_price field can go stale on tickers
+    // with lower options trading volume (e.g. IWM) — if no new options print has come in, the
+    // field just repeats the same old price even though the stock itself has moved, while OHLC
+    // candles (used for EMA/VWAP/Volume) keep updating normally. Confirmed live on 6/22: IWM's
+    // headline price sat frozen at $297.02 across multiple refreshes while EMA/VWAP/Volume all
+    // changed normally. Fix: prefer the most recent OHLC candle's close as the price source;
+    // only fall back to flow-alerts' price if OHLC has no usable candle yet.
+    if(regCandles.length>0){
+      var lastCandleClose = parseFloat(regCandles[regCandles.length-1].close);
+      if(!isNaN(lastCandleClose) && lastCandleClose>0) price = lastCandleClose;
+    }
 
     var pmh=preCandles.length>0?Math.max.apply(null,preCandles.map(function(c){return parseFloat(c.high);})):0;
     var pml=preCandles.length>0?Math.min.apply(null,preCandles.map(function(c){return parseFloat(c.low);})):0;
