@@ -320,8 +320,9 @@ function startWatcher() {
   if(watcherInterval) clearInterval(watcherInterval);
   watcherTick();
   watcherInterval = setInterval(watcherTick, 60000);
-  document.getElementById('watcherStatus').textContent='🔭 Background watcher: ON (SPY/QQQ/IWM, 60s)';
+  document.getElementById('watcherStatus').textContent='🔭 Background watcher: ON (SPY/QQQ/IWM, 60s) · Scanner: ON (20 tickers, 90s)';
   document.getElementById('watcherStatus').style.color='#00ff88';
+  startScanner(); // PATCH 8 — runs alongside the main watcher
 }
 
 function stopWatcher() {
@@ -329,6 +330,100 @@ function stopWatcher() {
   watcherInterval=null;
   document.getElementById('watcherStatus').textContent='🔭 Background watcher: OFF';
   document.getElementById('watcherStatus').style.color='#888';
+  stopScanner(); // PATCH 8
+}
+
+// ============================================================
+// PATCH 8 — Multi-ticker scanner (20 tickers, alert-only, no dashboard tab/UI)
+// ============================================================
+// Differs from the SPY/QQQ/IWM watcher in 3 ways:
+// 1. PMH/PML are AUTO-DETECTED from pre-market OHLC (no manual entry) — per Kenny's own notes
+//    this data is "unreliable" generally, but most reliable on heavy-volume names, which is why
+//    this list is restricted to liquid large caps across sectors rather than smaller/illiquid names.
+// 2. LIGHTER confirmation stack: PMH/PML + 8 EMA + Volume only. No VWAP, no sentiment (Flow/Tide/
+//    Dark Pool), no 20 EMA trend check — keeps the API load reasonable across 20 names polled
+//    on a timer, and accepts these are noisier, lower-conviction signals than the hand-tuned 3.
+// 3. LONGER cooldown (20 min vs 5 min) since auto-detected levels + a lighter gate produce more
+//    false starts; a longer window avoids alert spam from a list this size.
+// Surfaces ONLY via Pushover — no dedicated screen/tab, by design, to avoid maintaining 20 sets
+// of UI. This is intentionally a lower-priority, broader net layered on top of the main 3-ticker
+// system, not a replacement for it.
+
+var SCANNER_TICKERS = ['NVDA','AAPL','MSFT','AMD','META','GOOGL','JPM','BAC','GS','XOM','CVX','UNH','LLY','AMZN','TSLA','WMT','CAT','BA','AVGO','MU'];
+var SCANNER_POLL_MS = 90000; // 90s between full scanner passes (vs 60s for the 3-ticker watcher) — lighter pace given 20 tickers
+var SCANNER_COOLDOWN_MS = 20 * 60 * 1000; // 20 min, longer than the main watcher's 5 min — see note above
+var scannerInterval = null;
+var scannerLastVerdict = {};
+var scannerLastAlertTime = {};
+SCANNER_TICKERS.forEach(function(t){ scannerLastVerdict[t]=''; scannerLastAlertTime[t]=0; });
+
+function scannerCheckTicker(sym) {
+  return uw('/api/option-trades/flow-alerts?ticker_symbol='+sym+'&limit=5').then(function(flowRes){
+    var flowData = flowRes.data||[];
+    var price = parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
+    if(!price) return;
+    return Promise.all([
+      uw('/api/stock/'+sym+'/ohlc/1m?market_time=pre'),
+      uw('/api/stock/'+sym+'/ohlc/1m?limit=50')
+    ]).then(function(results){
+      var preOhlc = results[0];
+      var regOhlc = results[1];
+      var preCandles = (preOhlc.data||[]).filter(function(c){return c.market_time==='pre';});
+      var regCandles = (regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
+      regCandles.sort(function(a,b){return new Date(a.start_time)-new Date(b.start_time);});
+
+      // Auto-detected PMH/PML — no manual override available for scanner tickers
+      var pmh = preCandles.length>0 ? Math.max.apply(null, preCandles.map(function(c){return parseFloat(c.high);})) : 0;
+      var pml = preCandles.length>0 ? Math.min.apply(null, preCandles.map(function(c){return parseFloat(c.low);})) : 0;
+
+      var closes = regCandles.map(function(c){return parseFloat(c.close);});
+      var ema8 = calcEMA(closes,8);
+
+      var abovePMH = pmh>0 ? price>pmh : null;
+      var belowPML = pml>0 ? price<pml : null;
+      var aboveEMA = ema8 ? price>ema8 : null;
+      var volCheck = calcVolumeConfirmation(regCandles);
+      var volConfirmed = volCheck.confirmed;
+
+      // LIGHTER gate: PMH/PML + 8 EMA + Volume only (no VWAP, no sentiment, no 20 EMA)
+      var verdict='NO TRADE';
+      if(abovePMH&&aboveEMA&&volConfirmed) verdict='CALLS';
+      else if(belowPML&&aboveEMA===false&&volConfirmed) verdict='PUTS';
+
+      if(verdict==='CALLS'||verdict==='PUTS'){
+        var now = Date.now();
+        var cooledDown = (now - scannerLastAlertTime[sym]) > SCANNER_COOLDOWN_MS;
+        if(verdict!==scannerLastVerdict[sym] && cooledDown){
+          sendPushover(
+            '🔍 SCANNER — '+(verdict==='CALLS'?'🟢 CALLS':'🔴 PUTS')+' — '+sym,
+            'PMH/PML (auto) + 8 EMA + Volume aligned. Price: $'+price.toFixed(2)+' · Lighter check, not full Ellis gate.'
+          );
+          scannerLastAlertTime[sym] = now;
+        }
+        scannerLastVerdict[sym]=verdict;
+      } else {
+        scannerLastVerdict[sym]=verdict;
+      }
+    });
+  }).catch(function(err){ console.log('Scanner error '+sym, err); });
+}
+
+function scannerTick() {
+  // Stagger requests slightly instead of firing all 20 at once, to be gentler on the proxy/API
+  SCANNER_TICKERS.forEach(function(sym, i){
+    setTimeout(function(){ scannerCheckTicker(sym); }, i*300);
+  });
+}
+
+function startScanner() {
+  if(scannerInterval) clearInterval(scannerInterval);
+  scannerTick();
+  scannerInterval = setInterval(scannerTick, SCANNER_POLL_MS);
+}
+
+function stopScanner() {
+  if(scannerInterval) clearInterval(scannerInterval);
+  scannerInterval = null;
 }
 
 // PATCH 2 — PMH/PML sanity check (catches the SPY/QQQ cross-tab typo from 6/19)
@@ -479,7 +574,12 @@ function runAnalysis() {
     flowData=flowRes.data||[];
     price=parseFloat(flowData[0]&&flowData[0].underlying_price?flowData[0].underlying_price:0);
     var contractId = document.getElementById('contractId').value.trim();
-    return Promise.all([
+    // PATCH 9 — allSettled instead of all: one failed call (timeout, transient API error) used
+    // to abort the ENTIRE analysis via Promise.all's all-or-nothing behavior, even when 6 of 7
+    // calls succeeded. This was causing repeated "Load failed" errors mid-trading-day. Now each
+    // call is unwrapped individually below — a failed one just falls back to empty data instead
+    // of killing everything else.
+    return Promise.allSettled([
       uw('/api/darkpool/'+sym),
       uw('/api/market/market-tide'),
       uw('/api/stock/'+sym+'/spot-exposures/strike'),
@@ -489,14 +589,34 @@ function runAnalysis() {
       getContractLivePrice(contractId)
     ]);
   })
-  .then(function(results){
-    var dpRes=results[0];
-    var tideRes=results[1];
-    var gexRes=results[2];
-    var newsRes=results[3];
-    var preOhlc=results[4];
-    var regOhlc=results[5];
-    var contractPrice=results[6];
+  .then(function(settled){
+    // Unwrap each settled result: fulfilled -> its value, rejected -> safe empty fallback
+    var failedCalls = [];
+    function unwrap(i, label, fallback){
+      if(settled[i].status === 'fulfilled') return settled[i].value;
+      failedCalls.push(label);
+      return fallback;
+    }
+    var dpRes    = unwrap(0, 'Dark Pool', {data:[]});
+    var tideRes  = unwrap(1, 'Market Tide', {data:[]});
+    var gexRes   = unwrap(2, 'GEX', {data:[]});
+    var newsRes  = unwrap(3, 'News', {data:[]});
+    var preOhlc  = unwrap(4, 'Pre-market OHLC', {data:[]});
+    var regOhlc  = unwrap(5, 'Regular OHLC', {data:[]});
+    var contractPrice = settled[6].status==='fulfilled' ? settled[6].value : null;
+
+    // PATCH 9 — staleness guard: if the person switched tabs/tickers WHILE this analysis was
+    // still in flight (e.g. tapped QQQ, then tapped SPY before QQQ's analysis finished), the
+    // late-arriving QQQ result used to render anyway, showing a "$QQQ • Live" label under the
+    // SPY tab with frozen QQQ data. Now: if the ticker on screen no longer matches the ticker
+    // this analysis was FOR, discard these results silently instead of rendering them.
+    if(getTicker() !== sym){
+      btn.disabled=false;
+      btn.textContent='🔄 Analyze';
+      return;
+    }
+
+    var results=[dpRes,tideRes,gexRes,newsRes,preOhlc,regOhlc,contractPrice]; // kept for compatibility below
 
     var preCandles=(preOhlc.data||[]).filter(function(c){return c.market_time==='pre';});
     var regCandles=(regOhlc.data||[]).filter(function(c){return c.market_time==='r';});
@@ -509,6 +629,19 @@ function runAnalysis() {
     var manualPML=parseFloat(document.getElementById('manualPML').value);
     if(!isNaN(manualPMH)&&manualPMH>0) pmh=manualPMH;
     if(!isNaN(manualPML)&&manualPML>0) pml=manualPML;
+
+    // PATCH 9 — flag when CRITICAL data (the OHLC calls that feed EMA/VWAP/Volume/verdict) failed,
+    // so the verdict is never shown as confident when it's actually built on missing price data.
+    // Non-critical failures (News, GEX, Dark Pool, Market Tide) just silently show as empty —
+    // those are context cards, not gates, so missing them doesn't compromise the verdict itself.
+    var criticalFailed = failedCalls.filter(function(f){ return f==='Pre-market OHLC' || f==='Regular OHLC'; });
+    if(criticalFailed.length>0){
+      document.getElementById('errorBox').innerHTML =
+        '<div class="error-box"><strong>⚠️ Partial data:</strong> '+criticalFailed.join(' & ')+' failed to load for '+sym+'. Verdict below may be unreliable — retry Analyze.</div>';
+    } else if(failedCalls.length>0){
+      document.getElementById('errorBox').innerHTML =
+        '<div class="error-box" style="opacity:0.7"><strong>Note:</strong> '+failedCalls.join(', ')+' didn\'t load this refresh (non-critical) — verdict is still valid.</div>';
+    }
 
     // PATCH 2 — visible sanity check in the dashboard itself when Analyze runs
     if(pmh>0 && pml>0 && pml>=pmh){
